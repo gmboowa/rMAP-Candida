@@ -1,4 +1,4 @@
-## rMAP-Candida
+### rMAP-Candida
 
 ### Rapid Mycology Analysis Pipeline for *Candida*
 
