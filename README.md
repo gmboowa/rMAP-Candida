@@ -1,41 +1,31 @@
-### rMAP-Candida
+### rMAP-Candida: Rapid Mycology Analysis Pipeline for *Candida*
 
-### Rapid Mycology Analysis Pipeline for *Candida*
+**rMAP-Candida** is a reproducible, Dockerized bioinformatics workflow for the analysis of paired-end Illumina sequencing data from clinical *Candida* isolates. The pipeline is designed to support fungal genomic surveillance, species confirmation, quality control, genome assembly, annotation, antifungal resistance characterization, virulence assessment & integrated HTML reporting.
 
-**rMAP-Candida** is a reproducible, Dockerized bioinformatics workflow for the analysis of paired-end Illumina sequencing data from clinical *Candida* isolates. The pipeline is designed to support fungal genomic surveillance, species confirmation, quality control, genome assembly, annotation, antifungal resistance characterization, virulence assessment, and integrated HTML reporting.
-
-The workflow is implemented in **WDL** and is intended to run with **Cromwell**, making it portable across local workstations, institutional servers, and cloud-based environments.
+The workflow is implemented in **WDL** & is intended to run with **Cromwell**, making it portable across local workstations, institutional servers & cloud-based environments.
 
 ---
 
 ## Overview
 
-Clinical *Candida* infections are increasingly important in hospital and public health settings because of rising antifungal resistance, species diversity, and the emergence of multidrug-resistant pathogens such as *Candida auris*. Accurate genomic characterization of *Candida* isolates can support outbreak investigation, antifungal resistance surveillance, infection prevention, and research into pathogen evolution.
+Clinical *Candida* infections are increasingly important in hospital & public health settings because of rising antifungal resistance, species diversity & the emergence of multidrug-resistant pathogens such as *Candida auris*. Accurate genomic characterization of *Candida* isolates can support outbreak investigation, antifungal resistance surveillance, infection prevention & research into pathogen evolution.
 
 **rMAP-Candida** provides an end-to-end analysis framework for fungal paired-end genome sequencing data, with emphasis on:
 
 - Reproducibility
 - Clinical isolate analysis
 - Species-level identification
-- Antifungal resistance gene and mutation detection
+- Antifungal resistance gene & mutation detection
 - Assembly quality assessment
 - Genome annotation
 - Summary reporting for surveillance
 
 ---
 
-## Full name
-
-**rMAP_Myc_Candida** stands for:
-
-> **Rapid Mycology Analysis Pipeline for *Candida***
-
----
-
 ## Key features
 
 - Paired-end Illumina FASTQ input support
-- Adapter trimming and read preprocessing
+- Adapter trimming & read preprocessing
 - Read-level quality control using FastQC
 - Aggregated QC reporting using MultiQC
 - *Candida* species typing using Kraken2/Bracken or a fungal-focused database
@@ -46,15 +36,15 @@ Clinical *Candida* infections are increasingly important in hospital and public 
 - Antifungal resistance characterization
 - Virulence-associated gene screening
 - Optional phylogenomic analysis for closely related isolates
-- Integrated sample-level and cohort-level HTML report
+- Integrated sample-level & cohort-level HTML report
 - Dockerized execution for reproducibility
-- WDL/Cromwell workflow structure for portability and scalability
+- WDL/Cromwell workflow structure for portability & scalability
 
 ---
 
 ## Intended use
 
-This pipeline is intended for research and genomic surveillance applications involving *Candida* spp., including but not limited to:
+This pipeline is intended for research & genomic surveillance applications involving *Candida* spp., including but not limited to:
 
 - *Candida albicans*
 - *Candida auris*
@@ -73,7 +63,7 @@ The pipeline can be used for:
 
 1. **Clinical isolate genomic characterization**
    - Identify the likely *Candida* species
-   - Assess read and assembly quality
+   - Assess read & assembly quality
    - Generate annotated genome outputs
 
 2. **Antifungal resistance surveillance**
@@ -88,7 +78,7 @@ The pipeline can be used for:
 
 4. **Public health mycology research**
    - Characterize *Candida* diversity
-   - Generate preliminary data for manuscripts and grants
+   - Generate preliminary data for manuscripts & grants
    - Support local fungal genomic surveillance capacity
 
 ---
@@ -148,7 +138,7 @@ Typical tools:
 - fastp
 - Cutadapt
 
-Outputs may include:
+Outputs include:
 
 - Trimmed FASTQ files
 - Read count summaries
@@ -165,7 +155,7 @@ Typical tools:
 - FastQC
 - MultiQC
 
-Outputs may include:
+Outputs include:
 
 - Per-sample FastQC HTML reports
 - Aggregated MultiQC report
@@ -282,7 +272,7 @@ Possible tools:
 - GeneMark-ES
 - InterProScan, if available
 
-Outputs may include:
+Outputs include:
 
 - Annotated GFF
 - Protein FASTA
@@ -334,7 +324,7 @@ Example table:
 | Sample_002 | *C. auris* | FKS1 | S639F | Echinocandin | Resistance-associated marker detected |
 | Sample_003 | *C. glabrata* | FKS2 | None detected | Echinocandin | No known marker detected |
 
-> Note: Resistance prediction should be interpreted cautiously and ideally confirmed with phenotypic antifungal susceptibility testing where available.
+> Note: Resistance prediction should be interpreted cautiously & ideally confirmed with phenotypic antifungal susceptibility testing where available.
 
 ---
 
@@ -389,7 +379,7 @@ Outputs include:
 
 The final output is an integrated HTML report that summarizes the full analysis in a user-friendly format.
 
-The report may include:
+The report include:
 
 1. Run summary
 2. Sample metadata
@@ -533,10 +523,10 @@ A metadata file is recommended for tracking samples.
 Example `samples.tsv`:
 
 ```tsv
-sample_id	read1	read2	location	collection_date	source
-Sample_001	/path/to/Sample_001_R1.fastq.gz	/path/to/Sample_001_R2.fastq.gz	Uganda	2025-06-01	Blood culture
-Sample_002	/path/to/Sample_002_R1.fastq.gz	/path/to/Sample_002_R2.fastq.gz	Uganda	2025-06-03	Urine
-Sample_003	/path/to/Sample_003_R1.fastq.gz	/path/to/Sample_003_R2.fastq.gz	Kenya	2025-06-05	Blood culture
+sample_id	read1	read2	collection_date	source
+Sample_001	~/Sample_001_R1.fastq.gz	~/Sample_001_R2.fastq.gz	2025-06-01	Blood culture
+Sample_002	~/Sample_002_R1.fastq.gz	~/Sample_002_R2.fastq.gz	2025-06-03	Urine
+Sample_003	~/Sample_003_R1.fastq.gz	~/Sample_003_R2.fastq.gz	2025-06-05	Blood culture
 ```
 
 Required columns:
@@ -565,24 +555,24 @@ Example `inputs/rMAP-Candida.inputs.example.json`:
 
 ```json
 {
-  "rMAP_Myc_Candida.samples_tsv": "~/samples.tsv",
-  "rMAP_Myc_Candida.output_prefix": "candida_analysis",
-  "rMAP_Myc_Candida.outdir": "/absolute/path/to/output",
+  "rMAP_Candida.samples_tsv": "~/samples.tsv",
+  "rMAP_Candida.output_prefix": "candida_analysis",
+  "rMAP_Candida.outdir": "~/output",
 
-  "rMAP_Myc_Candida.threads": 8,
-  "rMAP_Myc_Candida.memory_gb": 16,
+  "rMAP_Candida.threads": 8,
+  "rMAP_Candida.memory_gb": 16,
 
-  "rMAP_Myc_Candida.kraken2_db": "/absolute/path/to/candida_kraken2_db",
-  "rMAP_Myc_Candida.busco_lineage": "saccharomycetes_odb10",
+  "rMAP_Candida.kraken2_db": "~/candida_kraken2_db",
+  "rMAP_Candida.busco_lineage": "saccharomycetes_odb10",
 
-  "rMAP_Myc_Candida.run_trimming": true,
-  "rMAP_Myc_Candida.run_species_typing": true,
-  "rMAP_Myc_Candida.run_assembly": true,
-  "rMAP_Myc_Candida.run_busco": true,
-  "rMAP_Myc_Candida.run_annotation": true,
-  "rMAP_Myc_Candida.run_amr": true,
-  "rMAP_Myc_Candida.run_virulence": true,
-  "rMAP_Myc_Candida.run_phylogeny": false
+  "rMAP_Candida.run_trimming": true,
+  "rMAP_Candida.run_species_typing": true,
+  "rMAP_Candida.run_assembly": true,
+  "rMAP_Candida.run_busco": true,
+  "rMAP_Candida.run_annotation": true,
+  "rMAP_Candida.run_amr": true,
+  "rMAP_Candida.run_virulence": true,
+  "rMAP_Candida.run_phylogeny": false
 }
 ```
 
@@ -593,7 +583,7 @@ Example `inputs/rMAP-Candida.inputs.example.json`:
 ### Basic run
 
 ```bash
-java -jar /path/to/cromwell-92.jar run rMAP_Myc_Candida.wdl \
+java -jar ~/cromwell-<version>.jar run rMAP_Candida.wdl \
   --inputs inputs/rMAP-Candida.inputs.example.json
 ```
 
@@ -608,7 +598,7 @@ java -jar ~/cromwell-92.jar run ~/Candida/rMAP-Candida.wdl \
 
 ## Output directory
 
-The final output directory may contain:
+The final output directory contain:
 
 ```text
 output/
@@ -667,7 +657,7 @@ output/
 | `busco_summary.tsv` | Genome completeness results |
 | `resistance_summary.tsv` | Antifungal resistance marker summary |
 | `virulence_summary.tsv` | Virulence gene summary |
-| `software_versions.tsv` | Software and container versions |
+| `software_versions.tsv` | Software & container versions |
 | `run_metadata.txt` | Pipeline run information |
 
 ---
@@ -696,7 +686,7 @@ Includes:
 - Collection metadata, where available
 - Analysis completion status
 
-### 3. Read QC and trimming
+### 3. Read QC & trimming
 
 Includes:
 
@@ -880,7 +870,7 @@ docker ps
 Run workflow:
 
 ```bash
-java -jar ~/cromwell-92.jar run rMAP-Candida.wdl \
+java -jar ~/cromwell-92.jar run rMAP_Candida.wdl \
   --inputs ~/rMAP-Candida.inputs.example.json
 ```
 
@@ -917,13 +907,7 @@ Check that all file paths in the input JSON are absolute paths.
 Good:
 
 ```json
-"/Users/gerald/Desktop/Candida/data/Sample_001_R1.fastq.gz"
-```
-
-Avoid:
-
-```json
-"data/Sample_001_R1.fastq.gz"
+"~/Sample_001_R1.fastq.gz"
 ```
 
 ---
@@ -964,7 +948,7 @@ Possible causes:
 Check database directory:
 
 ```bash
-ls -lh /path/to/candida_kraken2_db
+ls -lh ~/candida_kraken2_db
 ```
 
 Expected files may include:
@@ -1016,7 +1000,7 @@ Suggested initial thresholds:
 | BUSCO completeness | >90% preferred |
 | Species typing | Dominant species supported by high read proportion |
 
-These thresholds should be adapted based on sequencing depth, species, study design, and laboratory context.
+These thresholds should be adapted based on sequencing depth, species, study design & laboratory context.
 
 ---
 
@@ -1024,7 +1008,7 @@ These thresholds should be adapted based on sequencing depth, species, study des
 
 - Genomic prediction of antifungal resistance may not fully match phenotypic susceptibility.
 - Resistance interpretation depends on database completeness & species-specific knowledge.
-- Species identification depends on the completeness and quality of the reference database.
+- Species identification depends on the completeness & quality of the reference database.
 - Mixed infections or contamination may complicate interpretation.
 - Fungal genomes can vary substantially in size, ploidy, repeat content & assembly complexity.
 - The pipeline requires validation before clinical diagnostic use.
@@ -1033,16 +1017,13 @@ These thresholds should be adapted based on sequencing depth, species, study des
 
 ## Recommended citation
 
-If you use this pipeline, please cite the repository and any tools used by the workflow.
+If you use this pipeline, please cite the repository & any tools used by the workflow.
 
 Suggested citation format:
 
 ```text
-Mboowa G. rMAP_Myc_Candida: Rapid Mycology Analysis Pipeline for Candida genomic surveillance. GitHub repository.
+rMAP-Candida: Rapid Mycology Analysis Pipeline for Candida genomic surveillance. 
 ```
-
-Once a manuscript or preprint is available, cite the formal publication.
-
 ---
 
 ## Contributing
