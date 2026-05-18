@@ -1,6 +1,6 @@
-# rMAP-Candida
+## rMAP-Candida
 
-## Rapid Mycology Analysis Pipeline for *Candida*
+### Rapid Mycology Analysis Pipeline for *Candida*
 
 **rMAP-Candida** is a reproducible, Dockerized bioinformatics workflow for the analysis of paired-end Illumina sequencing data from clinical *Candida* isolates. The pipeline is designed to support fungal genomic surveillance, species confirmation, quality control, genome assembly, annotation, antifungal resistance characterization, virulence assessment, and integrated HTML reporting.
 
