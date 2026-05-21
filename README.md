@@ -342,7 +342,7 @@ find cromwell-executions/rMAP_Candida \
 
 ```bash
 find cromwell-executions/rMAP_Candida \
-  -name "rMAP-Myc-Candida-Candida_summary.tsv" \
+  -name "rMAP_Candida_summary.tsv" \
   -print
 ```
 
@@ -541,7 +541,7 @@ If you use this workflow, cite the repository & the major tools used by the work
 
 
 ```text
-rMAP-Myc-Candida: Rapid Mycological Analysis Pipeline for Candida genomic surveillance.
+rMAP-Candida: Rapid Mycological Analysis Pipeline for Candida genomic surveillance.
 ```
 
 Also cite the relevant tools used in the workflow, including Cromwell/WDL, fastp, Kraken2, Bracken, MEGAHIT, QUAST, BUSCO, ChroQueTas & FungAMR/CARD resources where applicable.
@@ -550,5 +550,5 @@ Also cite the relevant tools used in the workflow, including Cromwell/WDL, fastp
 
 ## Disclaimer
 
-`rMAP-Myc-Candida` is intended for research, training & public health genomic surveillance. It is not intended for direct clinical decision-making unless the workflow, databases, reporting logic & interpretation rules have been validated under appropriate clinical laboratory, regulatory, biosafety, and quality-management frameworks.
+`rMAP-Candida` is intended for research, training & public health genomic surveillance. It is not intended for direct clinical decision-making unless the workflow, databases, reporting logic & interpretation rules have been validated under appropriate clinical laboratory, regulatory, biosafety, and quality-management frameworks.
 
