@@ -1,4 +1,4 @@
-## rMAP-Candida: Rapid Mycological Analysis Pipeline for *Candida* Genomic Surveillance
+## rMAP-Candida: Rapid Mycological Analysis Pipeline for *Candida spp* Genomic Surveillance
 
 **rMAP-Candida** is a Dockerized WDL/Cromwell workflow for paired-end *Candida* whole-genome sequencing analysis & genomic surveillance. The current surveillance-ready workflow supports read trimming & QC, *Candida*-focused species typing, MEGAHIT assembly, QUAST assembly assessment, fast genome completeness assessment using **Compleasm**, ChroQueTas/FungAMR-based antifungal-resistance marker screening, species-aware core-SNP phylogeny, SNP-distance summaries, optional surveillance metadata integration & an integrated HTML surveillance report.
 
@@ -867,10 +867,8 @@ rMAP-Candida/
 │   ├── amr_chroquetas/
 │   └── candida_refs/
 ├── test_data/
-│   └── README.md
-└── examples/
-    ├── positive_controls.md
-    └── run_local_cromwell.sh
+    └── README.md
+
 ```
 
 ---
@@ -904,4 +902,4 @@ Also cite the relevant tools used in the workflow, including Cromwell/WDL, fastp
 
 ## Disclaimer
 
-`rMAP-Candida` is intended for research, training & public health genomic surveillance. It is not intended for direct clinical decision-making unless the workflow, databases, reporting logic and interpretation rules have been validated under appropriate clinical laboratory, regulatory, biosafety and quality-management frameworks.
+`rMAP-Candida` is intended for research, training & public health genomic surveillance. It is not intended for direct clinical decision-making unless the workflow, databases, reporting logic & interpretation rules have been validated under appropriate clinical laboratory, regulatory, biosafety & quality-management frameworks.
