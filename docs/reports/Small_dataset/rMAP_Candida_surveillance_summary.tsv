@@ -1,0 +1,5 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+SRR30894132	NA	NA	Candida albicans	High	Review	Review	No curated marker detected	Included / eligible	Review	QUAST assembly QC
+SRR30894141	NA	NA	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR36120464	NA	NA	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30894125	NA	NA	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected

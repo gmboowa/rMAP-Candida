@@ -1,0 +1,7 @@
+species	sample_a	sample_b	snp_distance	compared_sites
+Candida albicans	SRR30894125	SRR30894132	1061	1154
+Candida albicans	SRR30894125	SRR30894141	46	1154
+Candida albicans	SRR30894125	SRR36120464	1055	1154
+Candida albicans	SRR30894132	SRR30894141	1051	1154
+Candida albicans	SRR30894132	SRR36120464	156	1154
+Candida albicans	SRR30894141	SRR36120464	1041	1154
