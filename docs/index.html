@@ -515,7 +515,7 @@
           <div class="icon" aria-hidden="true">
             <img
               id="candida-img-small"
-              src="docs/assets/Candida_albicans.png"
+              src="assets/Candida_albicans.png"
               alt="Candida albicans image"
               loading="lazy"
             >
@@ -580,6 +580,68 @@
           : 'none';
       });
     });
+
+    // --- Image fallback loader for Candida PNG assets ---
+    // This keeps the card image from breaking on GitHub Pages when the
+    // same file exists under a different relative/base path.
+    function setupFallback(id, candidates, fallbackSvg) {
+      const img = document.getElementById(id);
+      if (!img) return;
+
+      const tried = new Set();
+      const initialSrc = img.getAttribute('src');
+      if (initialSrc) tried.add(initialSrc);
+
+      function tryNext() {
+        const next = candidates.find((url) => !tried.has(url));
+
+        if (next) {
+          tried.add(next);
+          img.src = next + (next.includes('?') ? '' : `?v=${Date.now()}`);
+          return;
+        }
+
+        if (fallbackSvg && img.src !== fallbackSvg) {
+          img.removeEventListener('error', tryNext);
+          img.src = fallbackSvg;
+        }
+      }
+
+      img.addEventListener('error', tryNext, { once: false });
+    }
+
+    const candidaFallbackSvg =
+      'data:image/svg+xml;charset=UTF-8,' +
+      encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+          <defs>
+            <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="#ccfbf1"/>
+              <stop offset="100%" stop-color="#bfdbfe"/>
+            </linearGradient>
+          </defs>
+          <rect width="96" height="96" rx="18" fill="url(#g)"/>
+          <circle cx="34" cy="38" r="15" fill="#0f766e" opacity="0.85"/>
+          <circle cx="58" cy="53" r="20" fill="#2563eb" opacity="0.75"/>
+          <circle cx="57" cy="27" r="8" fill="#2dd4bf" opacity="0.9"/>
+          <text x="48" y="82" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">Candida</text>
+        </svg>
+      `);
+
+    const candidaImageCandidates = [
+      'assets/Candida_albicans.png',
+      './assets/Candida_albicans.png',
+      '/rMAP-Candida/assets/Candida_albicans.png',
+      'https://gmboowa.github.io/rMAP-Candida/assets/Candida_albicans.png',
+      '/rMAP-Candida.io/assets/Candida_albicans.png',
+      'https://gmboowa.github.io/rMAP-Candida.io/assets/Candida_albicans.png'
+    ];
+
+    setupFallback(
+      'candida-img-small',
+      candidaImageCandidates,
+      candidaFallbackSvg
+    );
 
     const themeBtn = document.getElementById('themeToggle');
     const root = document.documentElement;
