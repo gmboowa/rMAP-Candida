@@ -1,125 +1,448 @@
-<!doctype html>
+```html
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>rMAP-Candida Reports</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Interactive rMAP-Candida HTML reports for Candida-focused fungal genome surveillance, species typing, assembly, BUSCO completeness, and antifungal-resistance marker screening.">
+  <meta
+    name="description"
+    content="Interactive rMAP-Candida HTML reports for Candida-focused fungal genome surveillance, species typing, assembly, BUSCO completeness, and antifungal-resistance marker screening."
+  >
+
   <style>
-    :root{
-      --bg:#ffffff;
-      --ink:#0f172a;
-      --muted:#64748b;
-      --line:#e5e7eb;
-      --card:#ffffff;
-      --chip:#f1f5f9;
-      --accent:#0f766e;
-      --accent2:#2563eb;
-      --deep-red:#8B0000;
-      --shadow:0 1px 2px rgba(15,23,42,.06), 0 4px 12px rgba(15,23,42,.04);
+    :root {
+      --bg: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e5e7eb;
+      --card: #ffffff;
+      --chip: #f1f5f9;
+      --accent: #0f766e;
+      --accent2: #2563eb;
+      --deep-red: #8b0000;
+      --shadow:
+        0 1px 2px rgba(15, 23, 42, 0.06),
+        0 4px 12px rgba(15, 23, 42, 0.04);
     }
 
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#0b1220;
-        --ink:#e5e7eb;
-        --muted:#94a3b8;
-        --line:#1f2937;
-        --card:#0f172a;
-        --chip:#111827;
-        --accent:#2dd4bf;
-        --accent2:#60a5fa;
-        --deep-red:#ef4444;
-        --shadow:none;
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1220;
+        --ink: #e5e7eb;
+        --muted: #94a3b8;
+        --line: #1f2937;
+        --card: #0f172a;
+        --chip: #111827;
+        --accent: #2dd4bf;
+        --accent2: #60a5fa;
+        --deep-red: #ef4444;
+        --shadow: none;
       }
     }
 
-    :root[data-theme="light"]{
-      --bg:#ffffff;
-      --ink:#0f172a;
-      --muted:#64748b;
-      --line:#e5e7eb;
-      --card:#ffffff;
-      --chip:#f1f5f9;
-      --accent:#0f766e;
-      --accent2:#2563eb;
-      --deep-red:#8B0000;
-      --shadow:0 1px 2px rgba(15,23,42,.06), 0 4px 12px rgba(15,23,42,.04);
+    :root[data-theme="light"] {
+      --bg: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e5e7eb;
+      --card: #ffffff;
+      --chip: #f1f5f9;
+      --accent: #0f766e;
+      --accent2: #2563eb;
+      --deep-red: #8b0000;
+      --shadow:
+        0 1px 2px rgba(15, 23, 42, 0.06),
+        0 4px 12px rgba(15, 23, 42, 0.04);
     }
 
-    :root[data-theme="dark"]{
-      --bg:#0b1220;
-      --ink:#e5e7eb;
-      --muted:#94a3b8;
-      --line:#1f2937;
-      --card:#0f172a;
-      --chip:#111827;
-      --accent:#2dd4bf;
-      --accent2:#60a5fa;
-      --deep-red:#ef4444;
-      --shadow:none;
+    :root[data-theme="dark"] {
+      --bg: #0b1220;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --line: #1f2937;
+      --card: #0f172a;
+      --chip: #111827;
+      --accent: #2dd4bf;
+      --accent2: #60a5fa;
+      --deep-red: #ef4444;
+      --shadow: none;
     }
 
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif}
-    body{min-height:100vh}
-    .hero{
-      background:linear-gradient(120deg,#064e3b 0%,#0e7490 45%,#2563eb 100%);
-      color:#fff;
-      padding:52px 20px 84px;
+    * {
+      box-sizing: border-box;
     }
-    .wrap{max-width:1100px;margin:auto;padding:0 20px}
-    .topbar{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:30px}
-    .brand-kicker{letter-spacing:.14em;text-transform:uppercase;font-size:12px;font-weight:800;opacity:.9;margin:0 0 10px}
-    h1{margin:0;font-size:clamp(32px,4vw,52px);line-height:1.05;letter-spacing:-.04em}
-    .hero p{max-width:760px;margin:18px 0 0;font-weight:600;color:rgba(255,255,255,.9)}
-    .actions{display:flex;gap:10px;flex-wrap:wrap}
-    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid rgba(255,255,255,.35);border-radius:12px;text-decoration:none;color:#fff;background:rgba(255,255,255,.12);box-shadow:none;cursor:pointer;font-weight:700}
-    .btn:hover{background:rgba(255,255,255,.2)}
-    .main{margin-top:-52px;padding-bottom:40px}
-    .panel{border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:var(--shadow);padding:20px;margin-bottom:20px}
-    .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
-    .metric{border:1px solid var(--line);border-radius:16px;padding:16px;background:var(--card)}
-    .metric small{display:block;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-    .metric strong{display:block;margin-top:6px;font-size:28px;letter-spacing:-.03em}
-    header{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:18px}
-    .section-title h2{margin:0;font-size:24px;letter-spacing:-.03em}
-    .section-title p{margin:4px 0 0;color:var(--muted);font-size:14px;max-width:780px}
-    .search{margin:14px 0 8px;position:relative}
-    .search input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);outline:none;position:relative;z-index:2;font-size:17px}
-    .search input:focus{border-color:var(--accent)}
-    .search input::placeholder{font-weight:700;color:var(--muted)}
-    .search .hint{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;z-index:3;transition:opacity .15s ease;line-height:1.2;font-size:17px}
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font:
+        16px/1.5 system-ui,
+        -apple-system,
+        Segoe UI,
+        Roboto,
+        Ubuntu,
+        Arial,
+        sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+    }
+
+    .hero {
+      background:
+        linear-gradient(
+          120deg,
+          #064e3b 0%,
+          #0e7490 45%,
+          #2563eb 100%
+        );
+      color: #ffffff;
+      padding: 52px 20px 84px;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: auto;
+      padding: 0 20px;
+    }
+
+    .topbar {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 30px;
+    }
+
+    .brand-kicker {
+      margin: 0 0 10px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 4vw, 52px);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      max-width: 760px;
+      margin: 18px 0 0;
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 600;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .main {
+      margin-top: -52px;
+      padding-bottom: 40px;
+    }
+
+    .panel {
+      margin-bottom: 20px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+    }
+
+    .metric small {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+
+    header {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .section-title p {
+      max-width: 780px;
+      margin: 4px 0 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .search {
+      position: relative;
+      margin: 14px 0 8px;
+    }
+
+    .search input {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--ink);
+      outline: none;
+      font-size: 17px;
+    }
+
+    .search input:focus {
+      border-color: var(--accent);
+    }
+
+    .search input::placeholder {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .search .hint {
+      position: absolute;
+      top: 50%;
+      left: 14px;
+      z-index: 3;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.2;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
     .search input:focus + .hint,
-    .search input:not(:placeholder-shown) + .hint{opacity:0}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px;margin-top:14px}
-    .card{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:18px;box-shadow:var(--shadow);transition:transform .08s ease,border-color .15s ease}
-    .card:hover{transform:translateY(-2px);border-color:var(--accent)}
-    .icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(15,118,110,.14),rgba(37,99,235,.14));border:1px solid var(--line);font-size:24px}
-    .icon img{width:44px;height:44px;display:block;border-radius:12px;object-fit:cover;border:1px solid var(--line)}
-    .title{margin:12px 0 8px;font-weight:800;font-size:clamp(18px,1rem + .25vw,22px);letter-spacing:-.02em}
-    .desc{margin:0 0 12px;color:var(--muted);font-size:14px}
-    .chips{display:flex;gap:6px;flex-wrap:wrap}
-    .chip{font-size:13px;background:var(--chip);padding:4px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-weight:700}
-    .chip-hit{background:#fee2e2;color:var(--deep-red);border-color:#fecaca}
-    .chip-species{background:#ccfbf1;color:#0f766e;border-color:#99f6e4}
-    .note{border-left:4px solid var(--accent);background:rgba(15,118,110,.08);padding:14px;border-radius:12px;margin-top:14px;color:var(--ink)}
-    footer{margin-top:28px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
-    code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:1px 5px;color:var(--ink)}
+    .search input:not(:placeholder-shown) + .hint {
+      opacity: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 16px;
+      margin-top: 14px;
+    }
+
+    .card {
+      display: block;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      color: inherit;
+      text-decoration: none;
+      box-shadow: var(--shadow);
+      transition:
+        transform 0.08s ease,
+        border-color 0.15s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+
+    .icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background:
+        linear-gradient(
+          135deg,
+          rgba(15, 118, 110, 0.14),
+          rgba(37, 99, 235, 0.14)
+        );
+      font-size: 24px;
+    }
+
+    .icon img {
+      display: block;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      object-fit: cover;
+    }
+
+    .title {
+      margin: 12px 0 8px;
+      font-size: clamp(18px, 1rem + 0.25vw, 22px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .desc {
+      margin: 0 0 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--chip);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .chip-hit {
+      background: #fee2e2;
+      border-color: #fecaca;
+      color: var(--deep-red);
+    }
+
+    .chip-species {
+      background: #ccfbf1;
+      border-color: #99f6e4;
+      color: #0f766e;
+    }
+
+    .note {
+      margin-top: 14px;
+      padding: 14px;
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--ink);
+    }
+
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 28px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--chip);
+      color: var(--ink);
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        monospace;
+    }
   </style>
 </head>
+
 <body>
   <section class="hero">
     <div class="wrap">
       <div class="topbar">
         <div>
           <p class="brand-kicker">rMAP-Candida report portal</p>
-          <h1>Integrated <em>Candida</em> fungal genomics reports</h1>
-          <p>Interactive HTML outputs for <em>Candida</em>-focused genomic surveillance, combining read QC, Kraken2/Bracken species typing, MEGAHIT assembly, QUAST assembly assessment, BUSCO fungal completeness, and ChroQueTas/FungAMR antifungal-resistance marker screening.</p>
+
+          <h1>
+            Integrated <em>Candida</em> fungal genomics reports
+          </h1>
+
+          <p>
+            Interactive HTML outputs for <em>Candida</em>-focused
+            genomic surveillance, combining read QC,
+            Kraken2/Bracken species typing, MEGAHIT assembly,
+            QUAST assembly assessment, BUSCO fungal completeness,
+            and ChroQueTas/FungAMR antifungal-resistance marker
+            screening.
+          </p>
         </div>
+
         <div class="actions">
-          <a class="btn" href="./reports/">Browse all reports</a>
-          <button type="button" class="btn" id="themeToggle" aria-pressed="false" title="Toggle light/dark">🌙/☀️</button>
+          <a class="btn" href="./reports/">
+            Browse all reports
+          </a>
+
+          <button
+            type="button"
+            class="btn"
+            id="themeToggle"
+            aria-pressed="false"
+            title="Toggle light/dark"
+          >
+            🌙/☀️
+          </button>
         </div>
       </div>
     </div>
@@ -127,52 +450,120 @@
 
   <main class="wrap main">
     <section class="summary-grid" aria-label="Workflow highlights">
-      <div class="metric"><small>Workflow</small><strong>rMAP-Candida</strong></div>
-      <div class="metric"><small>Main output</small><strong>HTML</strong></div>
-      <div class="metric"><small>AMR markers</small><strong>Cyp51/Fks</strong></div>
-      <div class="metric"><small>Completeness</small><strong>BUSCO</strong></div>
+      <div class="metric">
+        <small>Workflow</small>
+        <strong>rMAP-Candida</strong>
+      </div>
+
+      <div class="metric">
+        <small>Main output</small>
+        <strong>HTML</strong>
+      </div>
+
+      <div class="metric">
+        <small>AMR markers</small>
+        <strong>Cyp51/Fks</strong>
+      </div>
+
+      <div class="metric">
+        <small>Completeness</small>
+        <strong>BUSCO</strong>
+      </div>
     </section>
 
-    <section class="panel" style="margin-top:20px">
+    <section class="panel" style="margin-top: 20px;">
       <header>
         <div class="section-title">
           <h2>Available reports</h2>
-          <p>Each card links to an integrated <code>rMAP_Candida report.html</code> output generated by the working rMAP-Candida WDL workflow.</p>
+
+          <p>
+            Each card links to an integrated
+            <code>rMAP_Candida_report.html</code>
+            output generated by the working
+            rMAP-Candida WDL workflow.
+          </p>
         </div>
       </header>
 
       <div class="search" aria-label="Filter reports">
-        <input id="q" placeholder=" " autocomplete="off" aria-label="Search rMAP-Candida reports">
-        <div class="hint" aria-hidden="true">Search report… (e.g., <em>Candidozyma auris</em>, <em>Cyp51</em>, <em>BUSCO</em>, <em>fluconazole</em>)</div>
+        <input
+          id="q"
+          placeholder=" "
+          autocomplete="off"
+          aria-label="Search rMAP-Candida reports"
+        >
+
+        <div class="hint" aria-hidden="true">
+          Search report…
+          (e.g., <em>Candidozyma auris</em>,
+          <em>Cyp51</em>, <em>BUSCO</em>,
+          <em>fluconazole</em>)
+        </div>
       </div>
 
       <div id="cards" class="grid">
         <!-- Small benchmark dataset -->
-        <a class="card"
-           href="./reports/Small_dataset/report.html"
-           data-name="rMAP-Candida small dataset Candida sp isolates ">
+        <a
+          class="card"
+          href="./reports/Small_dataset/report.html"
+          data-name="rMAP-Candida small dataset Candida species isolates"
+        >
           <div class="icon" aria-hidden="true">
             <img
               id="candida-img-small"
               src="assets/Candida_albicans.png"
               alt="Candida albicans image"
-              loading="lazy">
+              loading="lazy"
+            >
           </div>
-          <div class="title">Candida — Small dataset</div>
+
+          <div class="title">
+            Candida — Small dataset
+          </div>
+
+          <p class="desc">
+            Integrated Candida species AMR and phylogenomics
+            report generated using the rMAP-Candida workflow.
+          </p>
+
           <div class="chips">
-            <span class="chip"><strong>Candida species AMR + Phylogenomics report</strong></span>
+            <span class="chip chip-species">
+              Candida species
+            </span>
+
+            <span class="chip chip-hit">
+              AMR screening
+            </span>
+
+            <span class="chip">
+              BUSCO
+            </span>
+
+            <span class="chip">
+              Phylogenomics
+            </span>
           </div>
         </a>
+      </div>
 
       <div class="note">
         <strong>Suggested repository layout:</strong>
-        place this file at <code>index.html</code>, store reports under <code>reports/&lt;dataset_name&gt;/rMAP_Candida_report.html</code>, and keep any shared images under <code>assets/</code>.
+        place this file at <code>index.html</code>,
+        store reports under
+        <code>reports/&lt;dataset_name&gt;/rMAP_Candida_report.html</code>,
+        and keep shared images under <code>assets/</code>.
       </div>
     </section>
 
     <footer>
-      <span>Generated for the rMAP-Candida workflow.</span>
-      <span>Repository: <code>gmboowa/rMAP-Candida.io</code></span>
+      <span>
+        Generated for the rMAP-Candida workflow.
+      </span>
+
+      <span>
+        Repository:
+        <code>gmboowa/rMAP-Candida.io</code>
+      </span>
     </footer>
   </main>
 
@@ -182,39 +573,62 @@
 
     q.addEventListener('input', () => {
       const needle = q.value.trim().toLowerCase();
-      cards.forEach(c => {
-        const hay = c.dataset.name.toLowerCase();
-        c.style.display = hay.includes(needle) ? '' : 'none';
+
+      cards.forEach((card) => {
+        const haystack = card.dataset.name.toLowerCase();
+
+        card.style.display = haystack.includes(needle)
+          ? ''
+          : 'none';
       });
     });
 
     const themeBtn = document.getElementById('themeToggle');
     const root = document.documentElement;
 
-    function setTheme(theme){
+    function setTheme(theme) {
       if (theme === 'light' || theme === 'dark') {
         root.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-        themeBtn.setAttribute('aria-pressed', String(theme === 'dark'));
-        themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+
+        themeBtn.setAttribute(
+          'aria-pressed',
+          String(theme === 'dark')
+        );
+
+        themeBtn.textContent = theme === 'dark'
+          ? '☀️'
+          : '🌙';
       }
     }
 
-    (function initTheme(){
+    (function initTheme() {
       const saved = localStorage.getItem('theme');
+
       if (saved === 'light' || saved === 'dark') {
         setTheme(saved);
       } else {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        themeBtn.textContent = prefersDark ? '☀️' : '🌙';
-        themeBtn.setAttribute('aria-pressed', String(prefersDark));
+        const prefersDark = window.matchMedia(
+          '(prefers-color-scheme: dark)'
+        ).matches;
+
+        themeBtn.textContent = prefersDark
+          ? '☀️'
+          : '🌙';
+
+        themeBtn.setAttribute(
+          'aria-pressed',
+          String(prefersDark)
+        );
       }
     })();
 
     themeBtn.addEventListener('click', () => {
       const current = root.getAttribute('data-theme');
+
       setTheme(current === 'dark' ? 'light' : 'dark');
     });
   </script>
 </body>
 </html>
+```
