@@ -1,5 +1,6 @@
 version 1.0
 
+
 workflow rMAP_Candida {
   input {
     Array[String]+ sample_names
@@ -11,14 +12,56 @@ workflow rMAP_Candida {
     Boolean do_species_typing = true
     Boolean do_assembly = true
     Boolean do_assembly_qc = true
-    Boolean do_busco = true
+    Boolean do_compleasm = false
+    Boolean do_busco = false  # legacy/deprecated; retained only for backward-compatible JSONs
     Boolean do_fungal_amr = true
+    Boolean do_phylogeny = false
+    Boolean render_phylogeny_tree = true
+
+    # Optional surveillance metadata TSV for interpretation in the HTML report.
+    # Recommended columns: sample_id, country, site, collection_date, specimen_type, patient_group, ward_or_facility, sequencing_platform.
+    File? surveillance_metadata_tsv
+
+    # Dockerized Candida reference bundle.
+    # Build/push this image separately and keep the references.tsv manifest inside it.
+    # This lets users run phylogeny without providing local reference FASTA paths in JSON.
+    String candida_refs_docker = "gmboowa/rmap-candida-refs:2026.05"
+    String candida_refs_manifest = "/opt/rmap_candida_refs/references.tsv"
+    String tree_visualization_docker = "gmboowa/ete3-render:1.18"
+
+    # Species-aware phylogeny inputs.
+    # Provide one reference per species that you want to include in phylogeny.
+    # Example:
+    #   phylogeny_reference_species = ["Candidozyma auris", "Candida albicans"]
+    #   phylogeny_reference_fastas  = ["/path/C_auris_B8441.fasta", "/path/C_albicans_SC5314.fasta"]
+    Array[String] phylogeny_reference_species = []
+    Array[File] phylogeny_reference_fastas = []
+    String snippy_docker = "staphb/snippy:4.6.0"
+    String iqtree2_docker = "gmboowa/iqtree2-python:2.3.4"
+    String iqtree2_model = "GTR+G"
+    Int iqtree2_bootstraps = 1000
+    Int min_species_samples_for_tree = 3
+    Int min_mapping_quality = 20
+    Int min_base_quality_for_phylogeny = 20
+    Int min_depth_for_phylogeny = 10
+    Int min_variant_quality_for_phylogeny = 20
+    Float core_site_min_fraction = 0.95
+
+    # Species-aware phylogeny branching.
+    # rc170 borrows the working rMAP-TB logic: eligible species groups use
+    # Snippy -> snippy-core -> IQ-TREE2 whenever listed here. This avoids the
+    # fragile diploid bcftools consensus branch that caused Candida albicans
+    # groups to be reported as variant_calling_failed before any tree could be built.
+    # Keep the array editable in JSON if you want to add/remove species later.
+    Array[String] snippy_phylogeny_species = ["Candidozyma auris", "Candida albicans"]
+    Array[String] haploid_phylogeny_species = ["Nakaseomyces glabratus"]
 
     String fungal_kraken2_bracken_docker = "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db"
     String fungamr_docker = "gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed"
     String megahit_docker = "quay.io/biocontainers/megahit:1.2.9--h5ca1c30_6"
     String quast_docker = "staphb/quast:5.2.0"
-    String busco_docker = "ezlabgva/busco:v5.7.1_cv1"
+    String compleasm_docker = "huangnengcsu/compleasm:v0.2.7"
+    String busco_docker = "ezlabgva/busco:v5.7.1_cv1"  # legacy/deprecated
     String fastp_docker = "quay.io/biocontainers/fastp:0.23.4--hadf994f_2"
     String fastqc_docker = "staphb/fastqc:0.12.1"
     String multiqc_docker = "multiqc/multiqc:v1.24"
@@ -27,7 +70,9 @@ workflow rMAP_Candida {
     Int max_memory_gb = 32
     Int min_read_length = 50
     Int bracken_read_length = 150
-    String busco_lineage = "saccharomycetes_odb10"
+    String compleasm_lineage = "saccharomycetes"
+    String compleasm_odb = "odb12"
+    String busco_lineage = "saccharomycetes_odb10"  # legacy/deprecated
     String kraken_db_path = "/opt/kraken2_db/candida"
     String bracken_level = "S"
   }
@@ -36,13 +81,19 @@ workflow rMAP_Candida {
   Int cpu_4 = if max_cpus < 4 then max_cpus else 4
   Int cpu_8 = if max_cpus < 8 then max_cpus else 8
 
+  # rc170 safety: even if an older JSON explicitly sets
+  # rMAP_Candida.snippy_phylogeny_species = ["Candidozyma auris"], force
+  # Candida albicans into the Snippy/core branch so the current 4-sample
+  # albicans group can produce a species-specific tree.
+  Array[String] effective_snippy_phylogeny_species = flatten([snippy_phylogeny_species, ["Candida albicans"]])
+
   #
   # Stage 1: per-sample read-level work and assembly.
   #
   # The first scatter deliberately contains only tasks that should run directly from
   # the paired FASTQ inputs.  Assembly-dependent tasks are launched in a second,
   # explicit scatter below over the complete Array[File] of assembly outputs.  This
-  # prevents QUAST, BUSCO, and AMR from accidentally receiving only shard-0 or a
+  # prevents QUAST and AMR from accidentally receiving only shard-0 or a
   # single selected assembly FASTA.
   #
   scatter (i in range(n)) {
@@ -106,11 +157,12 @@ workflow rMAP_Candida {
   # Stage 2: per-assembly downstream work.
   #
   # This second scatter is intentionally outside the assembly scatter.  Cromwell
-  # must first collect all ASSEMBLY.contigs_fasta outputs, then QUAST, BUSCO, and
+  # must first collect all ASSEMBLY.contigs_fasta outputs, then QUAST, optional BUSCO/Compleasm, and
   # AMR are scattered over the full array.  With two samples, this creates:
   #   call-QUAST/shard-0 and call-QUAST/shard-1
-  #   call-BUSCO/shard-0 and call-BUSCO/shard-1
-  #   call-AMR/shard-0   and call-AMR/shard-1
+  #   call-BUSCO/shard-0     and call-BUSCO/shard-1       only if do_busco=true
+  #   call-COMPLEASM/shard-0 and call-COMPLEASM/shard-1   only if do_compleasm=true
+  #   call-AMR/shard-0       and call-AMR/shard-1
   #
   if (do_assembly) {
     Array[File] assembled_contigs = select_all(ASSEMBLY.contigs_fasta)
@@ -142,6 +194,21 @@ workflow rMAP_Candida {
       }
     }
 
+    if (do_compleasm) {
+      scatter (b in range(length(assembled_contigs))) {
+        call COMPLEASM_FUNGAL as COMPLEASM {
+          input:
+            sample_name = sample_names[b],
+            assembly_fasta = assembled_contigs[b],
+            compleasm_lineage = compleasm_lineage,
+            compleasm_odb = compleasm_odb,
+            compleasm_docker = compleasm_docker,
+            cpu = cpu_8,
+            memory_gb = max_memory_gb
+        }
+      }
+    }
+
     if (do_fungal_amr && do_species_typing) {
       Array[File] species_summary_files_for_amr = select_all(SPECIES.top_species_tsv)
 
@@ -153,6 +220,76 @@ workflow rMAP_Candida {
             species_summary_tsv = species_summary_files_for_amr[a],
             fungal_amr_docker_image = fungamr_docker,
             threads = cpu_4
+        }
+      }
+    }
+  }
+
+
+  #
+  # Stage 3: optional species-aware Candida core-SNP phylogeny.
+  #
+  # IMPORTANT:
+  # Phylogeny is performed separately per top species call. Do not mix Candida species
+  # in one SNP tree. A species-specific reference FASTA must be supplied/exported for
+  # each species to be included. rc170 uses the rMAP-TB style Snippy/snippy-core
+  # branch for species listed in snippy_phylogeny_species, now including Candida albicans
+  # by default. Other species still have the bcftools consensus fallback.
+  # Recombinant regions are not explicitly filtered in this implementation; resulting
+  # trees should be interpreted as broad genomic relatedness/lineage structure rather than
+  # definitive transmission inference.
+  #
+  if (do_phylogeny && do_species_typing) {
+    call CANDIDA_EXPORT_REFERENCE_FASTAS {
+      input:
+        refs_manifest = candida_refs_manifest,
+        docker_image = candida_refs_docker
+    }
+
+    call CANDIDA_SNIPPY_CORE_BY_SPECIES {
+      input:
+        sample_names = sample_names,
+        read1s = analysis_read1,
+        read2s = analysis_read2,
+        species_top_tsvs = select_all(SPECIES.top_species_tsv),
+        reference_species = CANDIDA_EXPORT_REFERENCE_FASTAS.reference_species,
+        reference_fastas = CANDIDA_EXPORT_REFERENCE_FASTAS.reference_fastas,
+        min_species_samples_for_tree = min_species_samples_for_tree,
+        docker_image = snippy_docker,
+        cpu = cpu_8,
+        memory_gb = max_memory_gb,
+        min_quality = min_mapping_quality,
+        min_base_quality = min_base_quality_for_phylogeny,
+        min_depth = min_depth_for_phylogeny,
+        min_variant_quality = min_variant_quality_for_phylogeny,
+        core_site_min_fraction = core_site_min_fraction,
+        haploid_species = haploid_phylogeny_species,
+        snippy_species = effective_snippy_phylogeny_species
+    }
+
+    Array[String] phylogeny_group_labels = read_lines(CANDIDA_SNIPPY_CORE_BY_SPECIES.group_labels_txt)
+
+    scatter (pt in range(length(CANDIDA_SNIPPY_CORE_BY_SPECIES.core_full_alignments))) {
+      call CANDIDA_IQTREE2_PHYLOGENY as CANDIDA_IQTREE {
+        input:
+          alignment = CANDIDA_SNIPPY_CORE_BY_SPECIES.core_full_alignments[pt],
+          species_label = phylogeny_group_labels[pt],
+          model = iqtree2_model,
+          bootstrap_replicates = iqtree2_bootstraps,
+          docker_image = iqtree2_docker,
+          cpu = cpu_8,
+          memory_gb = max_memory_gb
+      }
+
+      if (render_phylogeny_tree) {
+        call CANDIDA_TREE_VISUALIZATION as CANDIDA_TREE {
+          input:
+            input_tree = CANDIDA_IQTREE.final_tree,
+            species_label = phylogeny_group_labels[pt],
+            docker_image = tree_visualization_docker,
+            width = 2600,
+            height = 1800,
+            image_format = "png"
         }
       }
     }
@@ -178,21 +315,36 @@ workflow rMAP_Candida {
       bracken_reports = select_all(SPECIES.bracken_report),
       assembly_summaries = select_all(ASSEMBLY.assembly_summary_tsv),
       quast_reports = select_first([QUAST.quast_report_tsv, []]),
-      busco_summaries = select_first([BUSCO.busco_short_summary_txt, []]),
-      busco_summary_tsvs = select_first([BUSCO.busco_summary_tsv, []]),
+      busco_summaries = BUSCO.busco_short_summary_txt,
+      busco_summary_tsvs = BUSCO.busco_summary_tsv,
+      compleasm_summaries = COMPLEASM.busco_short_summary_txt,
+      compleasm_summary_tsvs = COMPLEASM.busco_summary_tsv,
       amr_summaries = select_first([AMR.amr_summary_tsv, []]),
-      amr_htmls = select_first([AMR.amr_report_html, []])
+      amr_htmls = select_first([AMR.amr_report_html, []]),
+      phylogeny_group_summary = CANDIDA_SNIPPY_CORE_BY_SPECIES.phylogeny_group_summary_tsv,
+      phylogeny_core_alignments = select_first([CANDIDA_SNIPPY_CORE_BY_SPECIES.core_full_alignments, []]),
+      phylogeny_newick_trees = select_first([CANDIDA_IQTREE.final_tree, []]),
+      phylogeny_iqtree_reports = select_first([CANDIDA_IQTREE.iqtree_report, []]),
+      phylogeny_tree_images = select_all(select_first([CANDIDA_TREE.tree_image, []])),
+      surveillance_metadata_tsv = surveillance_metadata_tsv
   }
 
   output {
     File rmap_myc_html_report = MERGE_MYC_REPORTS.html_report
     File rmap_myc_summary_tsv = MERGE_MYC_REPORTS.summary_tsv
+    File rmap_candida_surveillance_summary_tsv = MERGE_MYC_REPORTS.surveillance_summary_tsv
+    File rmap_candida_pairwise_snp_distances_tsv = MERGE_MYC_REPORTS.pairwise_snp_distances_tsv
     Array[File] trimmed_reads_1 = select_all(TRIM.trimmed_read1)
     Array[File] trimmed_reads_2 = select_all(TRIM.trimmed_read2)
     File? multiqc_report = MULTIQC_REPORT.multiqc_report
     Array[File] fungal_species_summaries = select_all(SPECIES.top_species_tsv)
     Array[File] fungal_assemblies = select_all(ASSEMBLY.contigs_fasta)
     Array[File] fungal_amr_summaries = select_first([AMR.amr_summary_tsv, []])
+    File? candida_phylogeny_group_summary = CANDIDA_SNIPPY_CORE_BY_SPECIES.phylogeny_group_summary_tsv
+    Array[File] candida_core_snp_alignments = select_first([CANDIDA_SNIPPY_CORE_BY_SPECIES.core_full_alignments, []])
+    Array[File] candida_phylogeny_newick_trees = select_first([CANDIDA_IQTREE.final_tree, []])
+    Array[File] candida_iqtree_reports = select_first([CANDIDA_IQTREE.iqtree_report, []])
+    Array[File] candida_phylogeny_tree_images = select_all(select_first([CANDIDA_TREE.tree_image, []]))
   }
 }
 
@@ -231,7 +383,6 @@ task FASTP_TRIMMING {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
-    memory: "~{memory_gb} GB"
   }
 }
 
@@ -259,7 +410,6 @@ task FASTQC {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
-    memory: "~{memory_gb} GB"
   }
 }
 
@@ -286,7 +436,6 @@ task MULTIQC_REPORT {
   runtime {
     docker: "~{docker_image}"
     cpu: 2
-    memory: "8 GB"
   }
 }
 
@@ -470,7 +619,6 @@ PY
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
-    memory: "~{memory_gb} GB"
   }
 }
 
@@ -568,7 +716,6 @@ task FUNGAL_ASSEMBLY {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
-    memory: "~{memory_gb} GB"
     continueOnReturnCode: [0, 141]
   }
 }
@@ -640,7 +787,6 @@ task ASSEMBLY_QC {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
-    memory: "~{memory_gb} GB"
   }
 }
 
@@ -880,9 +1026,8 @@ PYBUSCO
   }
 
   runtime {
-    docker: busco_docker
+    docker: "~{busco_docker}"
     cpu: cpu
-    memory: memory_gb + " GB"
   }
 }
 
@@ -1449,13 +1594,1211 @@ EOF_AMR_HTML
   }
 
   runtime {
-    docker: fungal_amr_docker_image
+    docker: "~{fungal_amr_docker_image}"
     cpu: threads
-    memory: "8 GB"
-    disks: "local-disk 40 HDD"
-    continueOnReturnCode: 0
+    continueOnReturnCode: [0]
   }
 }
+
+
+
+task CANDIDA_EXPORT_REFERENCE_FASTAS {
+  input {
+    String refs_manifest = "/opt/rmap_candida_refs/references.tsv"
+    String docker_image = "gmboowa/rmap-candida-refs:2026.05"
+  }
+
+  command <<<
+    set -euo pipefail
+    mkdir -p refs_out
+
+    python3 <<'PY'
+from pathlib import Path
+import csv, re, shutil
+
+manifest = Path("~{refs_manifest}")
+if not manifest.exists():
+    raise FileNotFoundError(f"Reference manifest not found inside Docker image: {manifest}")
+
+def slug(x):
+    s = re.sub(r'[^A-Za-z0-9_.-]+', '_', str(x).strip())
+    return s.strip('_') or 'species'
+
+species_out = []
+with manifest.open(newline="") as fh:
+    sample = fh.read(4096)
+    fh.seek(0)
+    has_header = sample.lower().startswith("species\t")
+    if has_header:
+        reader = csv.DictReader(fh, delimiter="\t")
+        rows = []
+        for row in reader:
+            species = (row.get("species") or row.get("Species") or "").strip()
+            ref = (row.get("reference") or row.get("reference_path") or row.get("Reference") or "").strip()
+            if species and ref:
+                rows.append((species, ref))
+    else:
+        rows = []
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                rows.append((parts[0].strip(), parts[1].strip()))
+
+if not rows:
+    raise RuntimeError(f"No reference rows were parsed from {manifest}")
+
+for idx, (species, ref) in enumerate(rows):
+    ref_path = Path(ref)
+    if not ref_path.exists():
+        raise FileNotFoundError(f"Reference FASTA for {species} not found: {ref}")
+    out = Path("refs_out") / f"{idx:03d}_{slug(species)}.fasta"
+    shutil.copyfile(ref_path, out)
+    species_out.append(species)
+
+Path("reference_species.txt").write_text("\n".join(species_out) + "\n")
+Path("reference_manifest_used.tsv").write_text(
+    "species\treference_fasta_copied\n" +
+    "\n".join(f"{sp}\trefs_out/{idx:03d}_{slug(sp)}.fasta" for idx, sp in enumerate(species_out)) +
+    "\n"
+)
+PY
+  >>>
+
+  output {
+    Array[String] reference_species = read_lines("reference_species.txt")
+    Array[File] reference_fastas = glob("refs_out/*.fasta")
+    File reference_manifest_used = "reference_manifest_used.tsv"
+  }
+
+  runtime {
+    docker: "~{docker_image}"
+    cpu: 1
+  }
+}
+
+task CANDIDA_TREE_VISUALIZATION {
+  input {
+    File input_tree
+    String species_label
+    String docker_image = "gmboowa/ete3-render:1.18"
+    Int width = 2600
+    Int height = 1600
+    String image_format = "png"
+  }
+
+  command <<<
+    set -uo pipefail
+    mkdir -p tree_visualization
+    cp "~{input_tree}" tree_visualization/input.treefile
+    export QT_QPA_PLATFORM=offscreen
+    export MPLBACKEND=Agg
+
+    cat > tree_visualization/render_tree.py <<'PY'
+from pathlib import Path
+import re, html, traceback
+
+outdir = Path("tree_visualization")
+outdir.mkdir(exist_ok=True)
+
+species_label = '~{species_label}'.strip() or "Candida species"
+image_format = '~{image_format}'.strip().lower()
+if image_format not in {"png", "svg", "pdf"}:
+    image_format = "png"
+
+slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", species_label).strip("_") or "Candida_species"
+tree_path = Path("tree_visualization/input.treefile")
+out_img = outdir / f"{slug}.core_snp_tree.{image_format}"
+cleaned_tree = outdir / f"{slug}.core_snp_tree.cleaned.nwk"
+render_log = outdir / f"{slug}.tree_render.log"
+
+def clean_leaf_name(name):
+    s = str(name).strip().strip("'\"")
+    s = Path(s).name
+    s = re.sub(r"^snippy[_-]+", "", s, flags=re.I)
+    s = re.sub(r"^core[_-]+", "", s, flags=re.I)
+    s = re.sub(r"(\.sorted)?\.bam$", "", s, flags=re.I)
+    s = re.sub(r"\.(fastq|fq)(\.gz)?$", "", s, flags=re.I)
+    s = re.sub(r"\.(vcf|bcf)(\.gz)?$", "", s, flags=re.I)
+    s = re.sub(r"\.(consensus|fa|fasta|fna|aln)$", "", s, flags=re.I)
+    s = re.sub(r"_R?[12](_001)?$", "", s, flags=re.I)
+    s = re.sub(r"[\s]+", "_", s)
+    return s
+
+def is_reference_tip(name):
+    raw = str(name).strip().strip("'\"")
+    cleaned = clean_leaf_name(raw)
+    low = cleaned.lower()
+    raw_low = raw.lower()
+    if low in {"ref", "reference", "reference_genome", "outgroup"}:
+        return True
+    if raw_low in {"ref", "reference", "reference_genome", "outgroup"}:
+        return True
+    if low.startswith(("gcf_", "gca_", "nc_", "nw_", "nz_", "chr", "chromosome")):
+        return True
+    if "reference" in raw_low or "reference" in low:
+        return True
+    return False
+
+def write_placeholder(message):
+    msg = html.escape(str(message))[:260]
+    title = html.escape(f"rMAP-Candida species-aware core-SNP phylogeny: {species_label}")
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="600" viewBox="0 0 1400 600">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="45" y="45" width="1310" height="510" rx="28" fill="#f8fafc" stroke="#cbd5e1" stroke-width="3"/>
+<text x="700" y="150" text-anchor="middle" font-family="Arial" font-size="38" font-weight="700" fill="#111827">{title}</text>
+<text x="700" y="245" text-anchor="middle" font-family="Arial" font-size="24" fill="#475569">Tree image was not rendered</text>
+<text x="700" y="305" text-anchor="middle" font-family="Arial" font-size="20" fill="#b91c1c">{msg}</text>
+<text x="700" y="385" text-anchor="middle" font-family="Arial" font-size="18" fill="#64748b">Check the tree render log for details.</text>
+</svg>'''
+    placeholder_svg = outdir / f"{slug}.core_snp_tree.svg"
+    placeholder_svg.write_text(svg)
+    if image_format == "svg":
+        out_img.write_text(svg)
+    else:
+        # Write a valid PNG even when rendering fails, so HTML never shows a broken-image icon.
+        # This is a simple white 1x1 PNG; the detailed failure message is retained in the SVG/log.
+        import base64
+        png_1x1 = (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        )
+        out_img.write_bytes(base64.b64decode(png_1x1))
+    cleaned_tree.write_text(";\n")
+    render_log.write_text(str(message) + "\n")
+
+try:
+    from ete3 import Tree, TreeStyle, NodeStyle, TextFace
+
+    raw = tree_path.read_text().strip()
+    if not raw:
+        raise RuntimeError("Input Newick tree is empty.")
+
+    t = Tree(raw, format=1)
+    removed = []
+    seen = {}
+    for leaf in list(t.iter_leaves()):
+        original = leaf.name
+        if is_reference_tip(original):
+            removed.append(original)
+            leaf.detach()
+            continue
+        clean = clean_leaf_name(original)
+        if clean in seen:
+            seen[clean] += 1
+            clean = f"{clean}_{seen[clean]}"
+        else:
+            seen[clean] = 1
+        leaf.name = clean
+
+    if len(list(t.iter_leaves())) < 2:
+        raise RuntimeError("Fewer than two non-reference sample tips remained after cleaning.")
+
+    try:
+        t.ladderize(direction=1)
+    except Exception:
+        pass
+
+    t.write(outfile=str(cleaned_tree), format=1)
+
+    n_leaves = len(list(t.iter_leaves()))
+
+    # rMAP-TB-style adaptive rendering: width-only render, compact title, no forced tall canvas.
+    if n_leaves <= 5:
+        auto_width = max(int('~{width}'), 3800)
+        leaf_fsize = 14
+        species_fsize = 11
+        support_fsize = 10
+        tip_node_size = 8
+        line_width = 2
+        branch_vertical_margin = 18
+        margin_right = 1500
+    elif n_leaves <= 10:
+        auto_width = max(int('~{width}'), 4200)
+        leaf_fsize = 13
+        species_fsize = 10
+        support_fsize = 9
+        tip_node_size = 7
+        line_width = 2
+        branch_vertical_margin = 14
+        margin_right = 1600
+    elif n_leaves <= 25:
+        auto_width = max(int('~{width}'), 5000)
+        leaf_fsize = 11
+        species_fsize = 9
+        support_fsize = 8
+        tip_node_size = 6
+        line_width = 2
+        branch_vertical_margin = 8
+        margin_right = 1700
+    elif n_leaves <= 50:
+        auto_width = max(int('~{width}'), 5600)
+        leaf_fsize = 9
+        species_fsize = 8
+        support_fsize = 7
+        tip_node_size = 5
+        line_width = 1
+        branch_vertical_margin = 5
+        margin_right = 1800
+    elif n_leaves <= 100:
+        auto_width = max(int('~{width}'), 6400)
+        leaf_fsize = 8
+        species_fsize = 7
+        support_fsize = 6
+        tip_node_size = 4
+        line_width = 1
+        branch_vertical_margin = 3
+        margin_right = 1900
+    else:
+        auto_width = max(int('~{width}'), 7200)
+        leaf_fsize = 7
+        species_fsize = 6
+        support_fsize = 5
+        tip_node_size = 3
+        line_width = 1
+        branch_vertical_margin = 2
+        margin_right = 2000
+
+    for node in t.traverse():
+        ns = NodeStyle()
+        ns["hz_line_width"] = line_width
+        ns["vt_line_width"] = line_width
+        ns["size"] = 0
+        if node.is_leaf():
+            ns["size"] = tip_node_size
+            ns["fgcolor"] = "#0f3b8f"
+            node.set_style(ns)
+            sample_name = node.name
+            node.name = ""
+            node.add_face(TextFace(sample_name, fsize=leaf_fsize, fgcolor="#111827"), column=0, position="branch-right")
+            node.add_face(TextFace(f"  {species_label}", fsize=species_fsize, fgcolor="#2563eb"), column=1, position="branch-right")
+        else:
+            node.set_style(ns)
+            label = str(node.name).strip()
+            # IQ-TREE support values may be parsed either as internal node names
+            # or as node.support depending on Newick format. Prefer the original
+            # internal label; fall back to node.support only when it is informative.
+            if not label:
+                try:
+                    supp = float(getattr(node, "support", 0.0))
+                    if supp > 1.0001:
+                        label = str(int(round(supp))) if abs(supp - round(supp)) < 0.01 else f"{supp:.1f}"
+                    elif 0.0 < supp < 1.0:
+                        label = str(int(round(supp * 100)))
+                except Exception:
+                    label = ""
+            if label and label not in {"0", "1", "1.0", "100.0"}:
+                node.add_face(TextFace(label, fsize=support_fsize, fgcolor="#dc2626"), column=0, position="branch-top")
+
+    ts = TreeStyle()
+    ts.show_leaf_name = False
+    ts.show_branch_support = False
+    ts.show_scale = True
+    ts.mode = "r"
+    ts.scale = 120
+    ts.branch_vertical_margin = branch_vertical_margin
+    ts.margin_top = 20
+    ts.margin_bottom = 20
+    ts.margin_left = 20
+    ts.margin_right = margin_right
+
+    title_face = TextFace(f"rMAP-Candida Core-SNP Phylogenetic Tree: {species_label}", fsize=18, fgcolor="#000000", bold=True)
+    ts.title.add_face(title_face, column=0)
+
+    t.render(str(out_img), tree_style=ts, w=auto_width, units="px")
+
+    with open(render_log, "w") as log:
+        log.write("rMAP-Candida tree visualization rendered successfully.\n")
+        log.write(f"Species: {species_label}\n")
+        log.write(f"Input tree: {tree_path}\n")
+        log.write(f"Output image: {out_img}\n")
+        log.write(f"Cleaned Newick: {cleaned_tree}\n")
+        log.write(f"Tips rendered: {n_leaves}\n")
+        log.write("Removed reference/outgroup tips: " + (", ".join(removed) if removed else "none") + "\n")
+        log.write(f"Auto width: {auto_width}px\n")
+        log.write("Sample labels were cleaned to remove snippy_/core_ prefixes and file suffixes.\n")
+        log.write("Tree rendered with rMAP-TB-style adaptive width-only ETE3 layout.\n")
+
+except Exception as e:
+    write_placeholder("Tree rendering failed: " + str(e))
+    with open(render_log, "a") as log:
+        log.write("\nTRACEBACK:\n")
+        log.write(traceback.format_exc())
+PY
+
+    if command -v docker >/dev/null 2>&1; then
+      # Some renderer images define python3 as ENTRYPOINT. Override it so the
+      # command is interpreted exactly once inside the container.
+      docker run --rm \
+        --entrypoint /bin/bash \
+        -v "$PWD:$PWD" \
+        -w "$PWD" \
+        -e QT_QPA_PLATFORM=offscreen \
+        -e MPLBACKEND=Agg \
+        "~{docker_image}" \
+        -lc 'python3 tree_visualization/render_tree.py'
+    else
+      python3 tree_visualization/render_tree.py
+    fi
+
+  >>>
+
+  output {
+    File tree_image = glob("tree_visualization/*.core_snp_tree.png")[0]
+    File cleaned_newick = glob("tree_visualization/*.core_snp_tree.cleaned.nwk")[0]
+    File render_log = glob("tree_visualization/*.tree_render.log")[0]
+  }
+
+  runtime {
+    # Docker is invoked manually inside the command for this task to avoid
+    # Cromwell local-backend Containers-to-String docker coercion failures.
+    cpu: 2
+  }
+}
+
+task CANDIDA_SNIPPY_CORE_BY_SPECIES {
+  input {
+    Array[String]+ sample_names
+    Array[File]+ read1s
+    Array[File]+ read2s
+    Array[File] species_top_tsvs
+    Array[String] reference_species
+    Array[File] reference_fastas
+
+    # True Snippy branch species. Default is C. auris because it is relatively clonal
+    # and Snippy/snippy-core is widely used for C. auris short-read WGS comparisons.
+    Array[String] snippy_species = ["Candidozyma auris"]
+
+    # Non-Snippy species in this list use bcftools --ploidy 1.
+    # All other non-Snippy species use diploid-aware bcftools --ploidy 2.
+    Array[String] haploid_species = ["Nakaseomyces glabratus"]
+
+    Int min_species_samples_for_tree = 3
+    String docker_image = "staphb/snippy:4.6.0"
+    Int cpu = 8
+    Int memory_gb = 32
+    Int min_quality = 20
+    Int min_base_quality = 20
+    Int min_depth = 10
+    Int min_variant_quality = 20
+    Float core_site_min_fraction = 0.95
+  }
+
+  command <<<
+    set -euo pipefail
+    mkdir -p phylogeny refs logs
+
+    python3 <<'PY'
+from pathlib import Path
+import csv, re, shutil, subprocess, os, sys, gzip
+
+samples = """~{sep='\n' sample_names}""".splitlines()
+r1s = """~{sep='\n' read1s}""".splitlines()
+r2s = """~{sep='\n' read2s}""".splitlines()
+species_tsvs = """~{sep='\n' species_top_tsvs}""".splitlines()
+ref_species = """~{sep='\n' reference_species}""".splitlines()
+ref_files = """~{sep='\n' reference_fastas}""".splitlines()
+haploid_species = """~{sep='\n' haploid_species}""".splitlines()
+snippy_species = """~{sep='\n' snippy_species}""".splitlines()
+
+min_n = int("~{min_species_samples_for_tree}")
+cpu = int("~{cpu}")
+min_mapq = int("~{min_quality}")
+min_baseq = int("~{min_base_quality}")
+min_depth = int("~{min_depth}")
+min_vqual = int("~{min_variant_quality}")
+core_fraction = float("~{core_site_min_fraction}")
+
+def norm(x):
+    return re.sub(r'\s+', ' ', str(x).strip()).lower()
+
+def slug(x):
+    s = re.sub(r'[^A-Za-z0-9_.-]+', '_', str(x).strip())
+    return s.strip('_') or 'species'
+
+def read_top_species(path):
+    try:
+        with open(path) as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            for row in reader:
+                return row.get("top_species") or row.get("species") or row.get("name") or "Unknown"
+    except Exception:
+        return "Unknown"
+    return "Unknown"
+
+def run_cmd(cmd, log_path, cwd=None, shell=False):
+    with open(log_path, "a") as lf:
+        if shell:
+            lf.write("\n$ " + str(cmd) + "\n")
+            lf.flush()
+            rc = subprocess.call(["bash", "-lc", str(cmd)], cwd=cwd, stdout=lf, stderr=subprocess.STDOUT)
+        else:
+            lf.write("\n$ " + " ".join(map(str, cmd)) + "\n")
+            lf.flush()
+            rc = subprocess.call(list(map(str, cmd)), cwd=cwd, stdout=lf, stderr=subprocess.STDOUT)
+        lf.write(f"\n[exit_code] {rc}\n")
+    return rc
+
+def read_fasta(path):
+    seqs = {}
+    name = None
+    chunks = []
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                if name is not None:
+                    seqs[name] = "".join(chunks).upper()
+                name = line[1:].split()[0]
+                chunks = []
+            else:
+                chunks.append(line)
+        if name is not None:
+            seqs[name] = "".join(chunks).upper()
+    return seqs
+
+def write_fasta(records, path, width=80):
+    with open(path, "w") as out:
+        for name, seq in records:
+            out.write(f">{name}\n")
+            for i in range(0, len(seq), width):
+                out.write(seq[i:i+width] + "\n")
+
+def concatenate_genome_fasta(path):
+    seqs = read_fasta(path)
+    return "".join(seqs[k] for k in sorted(seqs))
+
+def build_core_snp_alignment(consensus_paths, core_out, full_out):
+    records = []
+    lengths = set()
+    for sample, cpath in consensus_paths:
+        seq = concatenate_genome_fasta(cpath)
+        records.append((sample, seq))
+        lengths.add(len(seq))
+    if len(lengths) != 1:
+        raise RuntimeError("Consensus FASTA lengths differ after reference-based consensus generation.")
+    L = lengths.pop()
+    write_fasta(records, full_out)
+    keep = []
+    min_called = int(core_fraction * len(records) + 0.999999)
+    valid = set("ACGT")
+    for pos in range(L):
+        col = [seq[pos].upper() for _, seq in records]
+        called = sum(1 for x in col if x in valid)
+        if called < min_called:
+            continue
+        alleles = set(x for x in col if x in valid)
+        if len(alleles) >= 2:
+            keep.append(pos)
+    snp_records = [(sample, "".join(seq[i] for i in keep) if keep else "N") for sample, seq in records]
+    write_fasta(snp_records, core_out)
+    return len(keep), L
+
+def clean_alignment_sample_name(name):
+    s = str(name).strip().strip("'\"")
+    s = Path(s).name
+    s = re.sub(r"^snippy[_-]+", "", s, flags=re.I)
+    s = re.sub(r"^core[_-]+", "", s, flags=re.I)
+    s = re.sub(r"(\.sorted)?\.bam$", "", s, flags=re.I)
+    s = re.sub(r"\.(fastq|fq)(\.gz)?$", "", s, flags=re.I)
+    s = re.sub(r"\.(vcf|bcf)(\.gz)?$", "", s, flags=re.I)
+    s = re.sub(r"\.(consensus|fa|fasta|fna|aln)$", "", s, flags=re.I)
+    s = re.sub(r"_R?[12](_001)?$", "", s, flags=re.I)
+    s = re.sub(r"\s+", "_", s)
+    return s
+
+def is_reference_alignment_name(name):
+    raw = str(name).strip().strip("'\"")
+    clean = clean_alignment_sample_name(raw)
+    low = clean.lower()
+    raw_low = raw.lower()
+    if low in {"ref", "reference", "reference_genome", "outgroup"}:
+        return True
+    if raw_low in {"ref", "reference", "reference_genome", "outgroup"}:
+        return True
+    if low.startswith(("gcf_", "gca_", "nc_", "nw_", "nz_", "chr", "chromosome")):
+        return True
+    if "reference" in raw_low or "reference" in low:
+        return True
+    return False
+
+def strip_reference_from_alignment(infile, outfile):
+    seqs = read_fasta(infile)
+    kept = []
+    seen = {}
+    for name, seq in seqs.items():
+        if is_reference_alignment_name(name):
+            continue
+        clean = clean_alignment_sample_name(name)
+        if clean in seen:
+            seen[clean] += 1
+            clean = f"{clean}_{seen[clean]}"
+        else:
+            seen[clean] = 1
+        kept.append((clean, seq))
+    if not kept:
+        for name, seq in seqs.items():
+            kept.append((clean_alignment_sample_name(name), seq))
+    write_fasta(kept, outfile)
+    return len(kept), len(kept[0][1]) if kept else 0
+
+refs = {norm(sp): (sp.strip(), rf.strip()) for sp, rf in zip(ref_species, ref_files) if sp.strip() and rf.strip()}
+snippy_set = set(norm(x) for x in snippy_species if x.strip())
+haploid_set = set(norm(x) for x in haploid_species if x.strip())
+
+groups = {}
+for sample, r1, r2, stsv in zip(samples, r1s, r2s, species_tsvs):
+    sp = read_top_species(stsv)
+    groups.setdefault(norm(sp), {"display": sp, "items": []})
+    groups[norm(sp)]["items"].append((sample, r1, r2))
+
+summary_rows = []
+group_labels = []
+alignment_manifest = []
+
+for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
+    display = info["display"]
+    items = info["items"]
+    n = len(items)
+    if key not in refs:
+        summary_rows.append({"species": display, "status": "SKIPPED_NO_REFERENCE", "sample_count": str(n), "branch": "NA", "ploidy": "NA", "reference": "NA", "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "No matching species-specific reference was provided in phylogeny_reference_species/phylogeny_reference_fastas."})
+        continue
+    ref_label, ref_path = refs[key]
+    branch = "snippy_core" if key in snippy_set else ("haploid_bcftools_consensus" if key in haploid_set else "diploid_aware_bcftools_iupac_consensus")
+    ploidy_str = "1" if key in snippy_set or key in haploid_set else "2"
+    if n < min_n:
+        summary_rows.append({"species": display, "status": "SKIPPED_TOO_FEW_SAMPLES", "sample_count": str(n), "branch": branch, "ploidy": ploidy_str, "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": f"Requires at least {min_n} samples for a species-specific tree."})
+        continue
+    gslug = slug(display)
+    outdir = Path("phylogeny") / gslug
+    outdir.mkdir(parents=True, exist_ok=True)
+    ref_copy = outdir / "reference.fasta"
+    shutil.copy(ref_path, ref_copy)
+
+    if key in snippy_set:
+        # rc170: rMAP-TB-style Snippy/core-SNP branch.
+        # This branch is deliberately permissive and logs per-sample failures rather
+        # than failing the whole workflow. It is now the default for C. auris and
+        # C. albicans, fixing the earlier C. albicans bcftools variant_calling_failed
+        # path that prevented a tree from being built.
+        log = outdir / "snippy_core.log"
+        failed, snippy_dirs = [], []
+
+        snippy_bin = shutil.which("snippy") or "/usr/local/bin/snippy"
+        snippy_core_bin = shutil.which("snippy-core") or "snippy-core"
+        with open(log, "a") as lf:
+            lf.write("CANDIDA_SNIPPY_CORE_BY_SPECIES rc170 Snippy branch\n")
+            lf.write(f"Species: {display}\n")
+            lf.write(f"Reference: {ref_label} -> {ref_copy}\n")
+            lf.write(f"Using snippy: {snippy_bin}\n")
+            lf.write(f"Using snippy-core: {snippy_core_bin}\n")
+            lf.write(f"Minimum variant quality: {min_vqual}\n")
+            lf.write(f"CPU threads: {cpu}\n\n")
+
+        for sample, r1, r2 in items:
+            sslug = slug(sample)
+            sdir = outdir / sslug
+            if sdir.exists():
+                shutil.rmtree(sdir)
+
+            cmd = [
+                snippy_bin,
+                "--cpus", str(cpu),
+                "--minqual", str(min_vqual),
+                "--ref", str(ref_copy),
+                "--R1", str(r1),
+                "--R2", str(r2),
+                "--outdir", str(sdir),
+                "--prefix", sslug,
+                "--force"
+            ]
+            rc = run_cmd(cmd, log)
+
+            vcf_candidates = [sdir / f"{sslug}.vcf", sdir / "snps.vcf"]
+            has_vcf = any(x.exists() and x.stat().st_size > 0 for x in vcf_candidates)
+
+            if rc != 0 or not has_vcf:
+                failed.append(sample + ":snippy_failed")
+            else:
+                snippy_dirs.append(str(sdir.resolve()))
+
+        if len(snippy_dirs) < min_n:
+            summary_rows.append({"species": display, "status": "SKIPPED_TOO_FEW_SUCCESSFUL_SNIPPY_RUNS", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Fewer than the minimum number of samples completed Snippy. Failed: " + ",".join(failed)})
+            continue
+
+        cmd = [snippy_core_bin, "--ref", str(ref_copy.resolve()), "--prefix", "core"] + snippy_dirs
+        rc = run_cmd(cmd, log, cwd=outdir)
+        raw_core = outdir / "core.aln"
+        raw_full = outdir / "core.full.aln"
+        if rc != 0 or not raw_core.exists() or raw_core.stat().st_size == 0:
+            summary_rows.append({"species": display, "status": "FAILED_SNIPPY_CORE", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "snippy-core failed or did not produce core.aln. Failed Snippy samples: " + ",".join(failed)})
+            continue
+
+        core_out = outdir / f"{gslug}.core_snps.aln"
+        full_out = outdir / f"{gslug}.full_consensus.aln"
+        nseqs, nsites = strip_reference_from_alignment(raw_core, core_out)
+        if raw_full.exists() and raw_full.stat().st_size > 0:
+            strip_reference_from_alignment(raw_full, full_out)
+        else:
+            shutil.copy(core_out, full_out)
+
+        group_labels.append(display)
+        alignment_manifest.append(str(core_out))
+        summary_rows.append({"species": display, "status": "PASS", "sample_count": str(nseqs), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": str(core_out), "full_consensus_alignment": str(full_out), "variable_sites": str(nsites), "notes": "rc170 used the rMAP-TB-style Snippy -> snippy-core branch. Species grouping was based on Kraken2/Bracken top-species calls; mixed-species trees are intentionally avoided. Recombination is not explicitly filtered."})
+        continue
+
+    ploidy = 1 if key in haploid_set else 2
+    strategy = "haploid_bcftools_consensus" if ploidy == 1 else "diploid_aware_bcftools_iupac_consensus"
+    log = outdir / "mapping_variant_consensus.log"
+    for idx_ext in [".amb", ".ann", ".bwt", ".pac", ".sa"]:
+        try: (Path(str(ref_copy) + idx_ext)).unlink()
+        except FileNotFoundError: pass
+    if run_cmd(["bwa", "index", ref_copy], log) != 0:
+        summary_rows.append({"species": display, "status": "FAILED_BWA_INDEX", "sample_count": str(n), "branch": strategy, "ploidy": str(ploidy), "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "bwa index failed for the supplied reference."}); continue
+    if run_cmd(["samtools", "faidx", ref_copy], log) != 0:
+        summary_rows.append({"species": display, "status": "FAILED_SAMTOOLS_FAIDX", "sample_count": str(n), "branch": strategy, "ploidy": str(ploidy), "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "samtools faidx failed for the supplied reference."}); continue
+    consensus_paths, failed = [], []
+    for sample, r1, r2 in items:
+        sslug = slug(sample)
+        sdir = outdir / sslug
+        sdir.mkdir(exist_ok=True)
+        slog = sdir / f"{sslug}.phylogeny.log"
+        bam = sdir / f"{sslug}.sorted.bam"
+        raw_vcf = sdir / f"{sslug}.raw.vcf.gz"
+        filt_vcf = sdir / f"{sslug}.filtered.vcf.gz"
+        lowcov_bed = sdir / f"{sslug}.low_coverage.bed"
+        consensus = sdir / f"{sslug}.consensus.fasta"
+        with open(slog, "w") as lf:
+            lf.write(f"Species: {display}\nPloidy: {ploidy}\nStrategy: {strategy}\nReference: {ref_label}\n")
+        if run_cmd(f"bwa mem -t {cpu} {ref_copy} {r1} {r2} | samtools sort -@ {cpu} -o {bam} -", slog, shell=True) != 0 or not bam.exists() or bam.stat().st_size == 0:
+            failed.append(sample + ":mapping_failed"); continue
+        if run_cmd(["samtools", "index", bam], slog) != 0:
+            failed.append(sample + ":bam_index_failed"); continue
+        mpileup_call = f"bcftools mpileup --threads {cpu} -Ou -q {min_mapq} -Q {min_baseq} -a FORMAT/DP,FORMAT/AD -f {ref_copy} {bam} | bcftools call --threads {cpu} --ploidy {ploidy} -mv -Oz -o {raw_vcf}"
+        if run_cmd(mpileup_call, slog, shell=True) != 0 or not raw_vcf.exists() or raw_vcf.stat().st_size == 0:
+            failed.append(sample + ":variant_calling_failed"); continue
+        if run_cmd(["bcftools", "index", "-t", raw_vcf], slog) != 0:
+            failed.append(sample + ":raw_vcf_index_failed"); continue
+        filter_expr = f"QUAL>={min_vqual} && FMT/DP>={min_depth}"
+        if run_cmd(["bcftools", "filter", "-i", filter_expr, "-Oz", "-o", filt_vcf, raw_vcf], slog) != 0:
+            failed.append(sample + ":variant_filter_failed"); continue
+        if run_cmd(["bcftools", "index", "-t", filt_vcf], slog) != 0:
+            failed.append(sample + ":filtered_vcf_index_failed"); continue
+        depth_cmd = f"samtools depth -aa -d 0 {bam} | awk -v md={min_depth} '{{if ($3 < md) print $1\"\\t\"($2-1)\"\\t\"$2}}' > {lowcov_bed}"
+        if run_cmd(depth_cmd, slog, shell=True) != 0:
+            failed.append(sample + ":depth_mask_failed"); continue
+        consensus_cmd = f"bcftools consensus -f {ref_copy} -m {lowcov_bed} -I {filt_vcf} > {consensus}"
+        if run_cmd(consensus_cmd, slog, shell=True) != 0 or not consensus.exists() or consensus.stat().st_size == 0:
+            failed.append(sample + ":consensus_failed"); continue
+        consensus_paths.append((sample, str(consensus)))
+    if len(consensus_paths) < min_n:
+        summary_rows.append({"species": display, "status": "SKIPPED_TOO_FEW_SUCCESSFUL_CONSENSUS", "sample_count": str(len(consensus_paths)), "branch": strategy, "ploidy": str(ploidy), "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Fewer than the minimum number of samples produced consensus FASTA files. Failed: " + ",".join(failed)})
+        continue
+    full_aln = outdir / f"{gslug}.full_consensus.aln"
+    core_snps = outdir / f"{gslug}.core_snps.aln"
+    try:
+        nsites, full_len = build_core_snp_alignment(consensus_paths, core_snps, full_aln)
+        group_labels.append(display)
+        alignment_manifest.append(str(core_snps))
+        summary_rows.append({"species": display, "status": "PASS", "sample_count": str(len(consensus_paths)), "branch": strategy, "ploidy": str(ploidy), "reference": ref_label, "core_alignment": str(core_snps), "full_consensus_alignment": str(full_aln), "variable_sites": str(nsites), "notes": f"{strategy}; low-depth sites masked; heterozygous diploid genotypes retained as IUPAC ambiguity codes. Recombination not explicitly filtered."})
+    except Exception as e:
+        summary_rows.append({"species": display, "status": "FAILED_CORE_SNP_ALIGNMENT", "sample_count": str(len(consensus_paths)), "branch": strategy, "ploidy": str(ploidy), "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": str(e)})
+
+with open("phylogeny/phylogeny_group_summary.tsv", "w", newline="") as out:
+    fields = ["species", "status", "sample_count", "branch", "ploidy", "reference", "core_alignment", "full_consensus_alignment", "variable_sites", "notes"]
+    w = csv.DictWriter(out, fieldnames=fields, delimiter="\t")
+    w.writeheader()
+    for row in summary_rows:
+        w.writerow(row)
+with open("phylogeny/group_labels.txt", "w") as out:
+    for label in group_labels:
+        out.write(label + "\n")
+with open("phylogeny/alignment_manifest.txt", "w") as out:
+    for aln in alignment_manifest:
+        out.write(aln + "\n")
+PY
+  >>>
+
+  output {
+    File phylogeny_group_summary_tsv = "phylogeny/phylogeny_group_summary.tsv"
+    File group_labels_txt = "phylogeny/group_labels.txt"
+    File alignment_manifest_txt = "phylogeny/alignment_manifest.txt"
+    Array[File] core_full_alignments = glob("phylogeny/*/*.core_snps.aln")
+    Array[File] full_consensus_alignments = glob("phylogeny/*/*.full_consensus.aln")
+  }
+
+  runtime {
+    docker: "~{docker_image}"
+    cpu: cpu
+  }
+}
+
+
+task COMPLEASM_FUNGAL {
+  input {
+    String sample_name
+    File assembly_fasta
+    String compleasm_docker
+    String compleasm_lineage
+    String compleasm_odb
+    Int cpu
+    Int memory_gb
+  }
+
+  command <<<
+    set +e
+    set +u
+    set +o pipefail
+
+    SAMPLE="~{sample_name}"
+    ASM="~{assembly_fasta}"
+    LINEAGE="~{compleasm_lineage}"
+    ODB="~{compleasm_odb}"
+    SUMMARY_TSV="${SAMPLE}.busco_summary.tsv"
+    SHORT_TXT="${SAMPLE}.busco.short_summary.txt"
+    LOG="${SAMPLE}.compleasm.log"
+    DETAILS="${SAMPLE}.compleasm.details.txt"
+    OUTDIR="compleasm_${SAMPLE}"
+
+    HEADER="sample_id	complete_busco_pct	single_copy_busco_pct	duplicated_busco_pct	fragmented_busco_pct	missing_busco_pct	busco_markers	busco_lineage	busco_status	busco_note"
+    printf "%b\n" "${HEADER}" > "${SUMMARY_TSV}"
+    : > "${LOG}"
+    : > "${DETAILS}"
+
+    echo "[$(date)] Compleasm task started for ${SAMPLE}" >> "${LOG}"
+    echo "Assembly FASTA: ${ASM}" >> "${LOG}"
+    echo "Lineage: ${LINEAGE}" >> "${LOG}"
+    echo "ODB: ${ODB}" >> "${LOG}"
+    echo "CPU: ~{cpu}; memory_gb: ~{memory_gb}" >> "${LOG}"
+    command -v compleasm >> "${LOG}" 2>&1 || true
+    compleasm -h >> "${LOG}" 2>&1 || true
+    python3 --version >> "${LOG}" 2>&1 || true
+
+    # Compleasm is a fast BUSCO-like completeness assessment based on miniprot.
+    # The output TSV intentionally keeps BUSCO-compatible column names so the
+    # existing rMAP-Candida HTML parser and summary tables continue to work.
+    compleasm run \
+      -a "${ASM}" \
+      -o "${OUTDIR}" \
+      -l "${LINEAGE}" \
+      --odb "${ODB}" \
+      -t "~{cpu}" >> "${LOG}" 2>&1
+    RC=$?
+    echo "[$(date)] Compleasm rc=${RC}" >> "${LOG}"
+
+    SUMMARY_FILE="$(find "${OUTDIR}" -type f -name 'summary.txt' 2>/dev/null | sort | head -n 1)"
+    if [ -n "${SUMMARY_FILE}" ] && [ -s "${SUMMARY_FILE}" ]; then
+      cp "${SUMMARY_FILE}" "${SHORT_TXT}"
+      python3 <<PYCOMP
+import re, pathlib, csv
+sample = "${SAMPLE}"
+lineage = "${LINEAGE}_${ODB}"
+summary_path = pathlib.Path("${SUMMARY_FILE}")
+out_path = pathlib.Path("${SUMMARY_TSV}")
+details_path = pathlib.Path("${DETAILS}")
+txt = summary_path.read_text(errors="ignore")
+details_path.write_text(txt)
+
+vals = {
+    "sample_id": sample,
+    "complete_busco_pct": "NA",
+    "single_copy_busco_pct": "NA",
+    "duplicated_busco_pct": "NA",
+    "fragmented_busco_pct": "NA",
+    "missing_busco_pct": "NA",
+    "busco_markers": "NA",
+    "busco_lineage": lineage,
+    "busco_status": "PASS",
+    "busco_note": "Compleasm completed successfully. Values are BUSCO-like conserved-ortholog completeness metrics generated by Compleasm."
+}
+
+# Compleasm summary.txt usually contains lines such as:
+# S:87.92%, 1419 / D:9.05%, 146 / F:1.73%, 28 / I:0.00%, 0 / M:1.30%, 21 / N:1614
+parts = {}
+for line in txt.splitlines():
+    m = re.match(r"^\s*([SDFIMN])\s*:\s*([0-9.]+)\s*%?\s*,?\s*([0-9]+)?", line)
+    if m:
+        parts[m.group(1)] = (m.group(2), m.group(3) or "NA")
+
+s_pct = float(parts.get("S", (0, "0"))[0]) if "S" in parts else None
+d_pct = float(parts.get("D", (0, "0"))[0]) if "D" in parts else None
+f_pct = float(parts.get("F", (0, "0"))[0]) if "F" in parts else None
+i_pct = float(parts.get("I", (0, "0"))[0]) if "I" in parts else 0.0
+m_pct = float(parts.get("M", (0, "0"))[0]) if "M" in parts else None
+if s_pct is not None:
+    vals["single_copy_busco_pct"] = f"{s_pct:.2f}"
+if d_pct is not None:
+    vals["duplicated_busco_pct"] = f"{d_pct:.2f}"
+if f_pct is not None:
+    # Compleasm has F and sometimes I fragmented subclasses. Combine them for a BUSCO-like fragmented value.
+    vals["fragmented_busco_pct"] = f"{(f_pct + i_pct):.2f}"
+if m_pct is not None:
+    vals["missing_busco_pct"] = f"{m_pct:.2f}"
+if s_pct is not None and d_pct is not None:
+    vals["complete_busco_pct"] = f"{(s_pct + d_pct):.2f}"
+if "N" in parts:
+    vals["busco_markers"] = parts["N"][1] if parts["N"][1] != "NA" else parts["N"][0]
+
+with out_path.open("w", newline="") as f:
+    fieldnames = ["sample_id","complete_busco_pct","single_copy_busco_pct","duplicated_busco_pct","fragmented_busco_pct","missing_busco_pct","busco_markers","busco_lineage","busco_status","busco_note"]
+    w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t")
+    w.writeheader()
+    w.writerow(vals)
+PYCOMP
+    else
+      echo "Compleasm failed or did not produce summary.txt. Inspect ${LOG}." > "${SHORT_TXT}"
+      echo "Compleasm failed or did not produce summary.txt. Exit code: ${RC}." > "${DETAILS}"
+      printf "%s\tNA\tNA\tNA\tNA\tNA\tNA\t%s_%s\tFAILED\tCompleasm failed or summary.txt was not found; inspect %s.\n" "${SAMPLE}" "${LINEAGE}" "${ODB}" "${LOG}" >> "${SUMMARY_TSV}"
+    fi
+
+    test -s "${SUMMARY_TSV}"
+    exit 0
+  >>>
+
+  output {
+    File busco_summary_tsv = "~{sample_name}.busco_summary.tsv"
+    File busco_short_summary_txt = "~{sample_name}.busco.short_summary.txt"
+    File compleasm_log = "~{sample_name}.compleasm.log"
+    File compleasm_details = "~{sample_name}.compleasm.details.txt"
+  }
+
+  runtime {
+    docker: "~{compleasm_docker}"
+    cpu: "~{cpu}"
+    memory: "~{memory_gb} GB"
+  }
+}
+
+task CANDIDA_IQTREE2_PHYLOGENY {
+  input {
+    File alignment
+    String species_label
+    String model = "GTR+G"
+    Int bootstrap_replicates = 1000
+    String docker_image = "gmboowa/iqtree2-python:2.3.4"
+    Int cpu = 8
+    Int memory_gb = 32
+    Float max_missing_fraction_for_tree = 0.50
+    Int min_non_reference_samples_for_tree = 3
+  }
+
+  command <<<
+    set -uo pipefail
+    mkdir -p iqtree logs
+
+    echo "IQ-TREE report not available." > iqtree/iqtree.report
+    echo "IQ-TREE log not available." > iqtree/iqtree.log
+    echo "not_started" > iqtree/iqtree_status.txt
+    echo "(IQTREE_not_started:0.0);" > iqtree/final.treefile
+    echo "Alignment filtering not completed." > iqtree/alignment_filtering_summary.txt
+    echo -e "sample\talignment_length\tacgt_count\tmissing_count\tmissing_fraction\tthreshold\treason\texclusion_note" > iqtree/excluded_from_iqtree.tsv
+    echo -e "sample\talignment_length\tacgt_count\tmissing_count\tmissing_fraction" > iqtree/included_in_iqtree.tsv
+
+    python3 <<'PY'
+import re
+label = """~{species_label}"""
+slug = re.sub(r'[^A-Za-z0-9_.-]+', '_', label).strip('_') or 'Candida_species'
+open("iqtree/group_slug.txt", "w").write(slug)
+PY
+
+    SLUG="$(cat iqtree/group_slug.txt)"
+    cp "~{alignment}" "iqtree/${SLUG}.core.original.aln"
+    cp "~{alignment}" "iqtree/${SLUG}.core.filtered.aln"
+
+    python3 <<'PY'
+from collections import OrderedDict
+import sys, re
+
+infile = "iqtree/" + open("iqtree/group_slug.txt").read().strip() + ".core.original.aln"
+outfile = "iqtree/" + open("iqtree/group_slug.txt").read().strip() + ".core.filtered.aln"
+excluded = "iqtree/excluded_from_iqtree.tsv"
+included_tsv = "iqtree/included_in_iqtree.tsv"
+summary = "iqtree/alignment_filtering_summary.txt"
+max_missing = float("~{max_missing_fraction_for_tree}")
+min_samples = int("~{min_non_reference_samples_for_tree}")
+records=OrderedDict(); name=None; seq=[]
+for line in open(infile, errors='replace'):
+    line=line.strip()
+    if not line: continue
+    if line.startswith('>'):
+        if name is not None: records[name]=''.join(seq)
+        name=line[1:].split()[0]; seq=[]
+    else:
+        seq.append(line)
+if name is not None: records[name]=''.join(seq)
+lengths=set(map(len, records.values())) if records else set()
+if not records or len(lengths)!=1:
+    open(summary,'w').write('No usable equal-length FASTA alignment was available for IQ-TREE.\n')
+    open(outfile,'w').write('')
+    sys.exit(12)
+L=next(iter(lengths))
+inc=OrderedDict(); exc=[]
+for n,s in records.items():
+    su=s.upper(); acgt=sum(1 for b in su if b in 'ACGT'); miss=L-acgt; frac=miss/L if L else 1.0
+    if L==0 or acgt==0 or frac>=max_missing:
+        exc.append((n,L,acgt,miss,frac,'missing_or_no_acgt'))
+    else:
+        inc[n]=s
+with open(excluded,'w') as out:
+    out.write('sample\talignment_length\tacgt_count\tmissing_count\tmissing_fraction\tthreshold\treason\texclusion_note\n')
+    for n,L,acgt,miss,frac,reason in exc:
+        out.write(f'{n}\t{L}\t{acgt}\t{miss}\t{frac:.6f}\t{max_missing:.6f}\t{reason}\tExcluded only from IQ-TREE because of high missing/ambiguous/gap content or no usable ACGT bases.\n')
+with open(included_tsv,'w') as out:
+    out.write('sample\talignment_length\tacgt_count\tmissing_count\tmissing_fraction\n')
+    for n,s in inc.items():
+        su=s.upper(); acgt=sum(1 for b in su if b in 'ACGT'); miss=L-acgt; frac=miss/L if L else 1.0
+        out.write(f'{n}\t{L}\t{acgt}\t{miss}\t{frac:.6f}\n')
+with open(outfile,'w') as out:
+    for n,s in inc.items():
+        out.write(f'>{n}\n')
+        for i in range(0,len(s),80): out.write(s[i:i+80]+'\n')
+with open(summary,'w') as out:
+    out.write(f'Original sequences: {len(records)}\nIncluded sequences: {len(inc)}\nExcluded sequences: {len(exc)}\nAlignment length: {L}\n')
+if len(inc) < min_samples:
+    sys.exit(12)
+PY
+
+    FILTER_RC=$?
+    echo "Alignment filtering exit code: ${FILTER_RC}" > logs/iqtree.command.log
+    cat iqtree/alignment_filtering_summary.txt >> logs/iqtree.command.log || true
+
+    if command -v iqtree2 >/dev/null 2>&1; then
+      IQTREE_BIN="$(command -v iqtree2)"
+      IQTREE_MODE="host"
+    elif command -v iqtree >/dev/null 2>&1; then
+      IQTREE_BIN="$(command -v iqtree)"
+      IQTREE_MODE="host"
+    elif command -v docker >/dev/null 2>&1; then
+      IQTREE_BIN="iqtree2"
+      IQTREE_MODE="docker"
+    else
+      IQTREE_BIN=""
+      IQTREE_MODE=""
+    fi
+
+    if [ "${FILTER_RC}" -eq 0 ] && [ -n "${IQTREE_BIN}" ]; then
+      if [ "${IQTREE_MODE}" = "docker" ]; then
+        # Run IQ-TREE inside Docker without relying on Cromwell-managed docker runtime.
+        # The container entrypoint is overridden because some local backends/images
+        # otherwise try to execute the wrong binary.
+        IQTREE_CMD='set -euo pipefail
+          if command -v iqtree2 >/dev/null 2>&1; then BIN="$(command -v iqtree2)";
+          elif command -v iqtree >/dev/null 2>&1; then BIN="$(command -v iqtree)";
+          else echo "ERROR: iqtree2/iqtree not found inside container" >&2; exit 127; fi
+          if [ "~{bootstrap_replicates}" -gt 0 ]; then
+            "$BIN" -s "iqtree/'"${SLUG}"'.core.filtered.aln" -m "~{model}" -B ~{bootstrap_replicates} -T ~{cpu} --prefix "iqtree/'"${SLUG}"'" -redo;
+          else
+            "$BIN" -s "iqtree/'"${SLUG}"'.core.filtered.aln" -m "~{model}" -T ~{cpu} --prefix "iqtree/'"${SLUG}"'" -redo;
+          fi'
+        docker run --rm --entrypoint /bin/bash \
+          -v "$PWD:$PWD" \
+          -w "$PWD" \
+          "~{docker_image}" \
+          -lc "${IQTREE_CMD}" > logs/iqtree.run.log 2>&1
+      else
+        if [ "~{bootstrap_replicates}" -gt 0 ]; then
+          "${IQTREE_BIN}" -s "iqtree/${SLUG}.core.filtered.aln" -m "~{model}" -B ~{bootstrap_replicates} -T ~{cpu} --prefix "iqtree/${SLUG}" -redo > logs/iqtree.run.log 2>&1
+        else
+          "${IQTREE_BIN}" -s "iqtree/${SLUG}.core.filtered.aln" -m "~{model}" -T ~{cpu} --prefix "iqtree/${SLUG}" -redo > logs/iqtree.run.log 2>&1
+        fi
+      fi
+      IQ_RC=$?
+      if [ "${IQ_RC}" -eq 0 ] && [ -s "iqtree/${SLUG}.treefile" ]; then
+        cp "iqtree/${SLUG}.treefile" iqtree/final.treefile
+        [ -s "iqtree/${SLUG}.iqtree" ] && cp "iqtree/${SLUG}.iqtree" iqtree/iqtree.report
+        [ -s "iqtree/${SLUG}.log" ] && cp "iqtree/${SLUG}.log" iqtree/iqtree.log
+        echo "success; iqtree_bootstrap_replicates=~{bootstrap_replicates}" > iqtree/iqtree_status.txt
+      else
+        echo "iqtree_failed_after_filtering" > iqtree/iqtree_status.txt
+      fi
+    else
+      echo "too_few_or_invalid_samples_after_filtering" > iqtree/iqtree_status.txt
+      echo "IQ-TREE was skipped because too few valid samples remained after filtering, or IQ-TREE executable was unavailable." > logs/iqtree.run.log
+    fi
+
+    # Stable fallback/validation:
+    # - Do not pass placeholder Newick such as (IQTREE_not_started:0.0) to the renderer.
+    # - If IQ-TREE failed/skipped but a filtered alignment exists, build a small deterministic
+    #   distance-based fallback Newick from the filtered alignment so the report always has a
+    #   real sample tree instead of a broken image.
+    python3 <<'PY'
+from pathlib import Path
+from collections import OrderedDict
+import re, math
+
+slug = Path('iqtree/group_slug.txt').read_text().strip()
+final = Path('iqtree/final.treefile')
+aln = Path(f'iqtree/{slug}.core.filtered.aln')
+status = Path('iqtree/iqtree_status.txt')
+runlog = Path('logs/iqtree.run.log')
+
+def sanitize_name(name):
+    name = str(name).strip().split()[0]
+    name = re.sub(r'[^A-Za-z0-9_.-]+', '_', name)
+    return name or "sample"
+
+def read_fasta(path):
+    records = OrderedDict()
+    name = None
+    seq = []
+    if not path.exists():
+        return records
+    for line in path.read_text(errors='replace').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('>'):
+            if name is not None:
+                records[sanitize_name(name)] = ''.join(seq).upper()
+            name = line[1:].strip()
+            seq = []
+        else:
+            seq.append(line)
+    if name is not None:
+        records[sanitize_name(name)] = ''.join(seq).upper()
+    return records
+
+def looks_like_real_tree(txt):
+    t = (txt or '').strip()
+    if not t or not t.endswith(';'):
+        return False
+    bad_tokens = [
+        'IQTREE_not_started',
+        'IQTREE_no_tree_generated',
+        'IQTREE_failed',
+        'not_started',
+        'no_tree_generated'
+    ]
+    if any(x in t for x in bad_tokens):
+        return False
+    # Require at least two named tips. This deliberately avoids full Newick parsing.
+    labels = re.findall(r'([A-Za-z0-9_.-]+)\s*:', t)
+    labels = [x for x in labels if not x.replace('.', '', 1).isdigit()]
+    return len(set(labels)) >= 2
+
+def hamming_distance(a, b):
+    n = min(len(a), len(b))
+    comparable = 0
+    diff = 0
+    for x, y in zip(a[:n], b[:n]):
+        if x in 'ACGT' and y in 'ACGT':
+            comparable += 1
+            if x != y:
+                diff += 1
+    if comparable == 0:
+        return 0.0
+    return diff / comparable
+
+def quote_newick_label(label):
+    # Labels are sanitized, so quoting is not required.
+    return sanitize_name(label)
+
+def build_upgma(records):
+    names = list(records.keys())
+    if len(names) < 2:
+        return None
+
+    clusters = {}
+    for n in names:
+        clusters[n] = {
+            'members': [n],
+            'newick': quote_newick_label(n),
+            'height': 0.0
+        }
+
+    # Precompute pairwise distances.
+    pairdist = {}
+    for i, a in enumerate(names):
+        for b in names[i+1:]:
+            pairdist[frozenset([a, b])] = hamming_distance(records[a], records[b])
+
+    def avg_dist(c1, c2):
+        vals = []
+        for a in clusters[c1]['members']:
+            for b in clusters[c2]['members']:
+                if a == b:
+                    continue
+                vals.append(pairdist.get(frozenset([a, b]), 0.0))
+        return sum(vals) / len(vals) if vals else 0.0
+
+    counter = 0
+    while len(clusters) > 1:
+        keys = sorted(clusters.keys())
+        best = None
+        for i, a in enumerate(keys):
+            for b in keys[i+1:]:
+                d = avg_dist(a, b)
+                candidate = (d, a, b)
+                if best is None or candidate < best:
+                    best = candidate
+        d, a, b = best
+        counter += 1
+        parent_height = max(d / 2.0, clusters[a]['height'], clusters[b]['height'])
+        la = max(parent_height - clusters[a]['height'], 0.0)
+        lb = max(parent_height - clusters[b]['height'], 0.0)
+        newick = f"({clusters[a]['newick']}:{la:.8f},{clusters[b]['newick']}:{lb:.8f})"
+        members = clusters[a]['members'] + clusters[b]['members']
+        del clusters[a]
+        del clusters[b]
+        clusters[f'cluster_{counter}'] = {
+            'members': members,
+            'newick': newick,
+            'height': parent_height
+        }
+
+    root = next(iter(clusters.values()))
+    return root['newick'] + ';\n'
+
+current = final.read_text(errors='replace') if final.exists() else ''
+if looks_like_real_tree(current):
+    raise SystemExit(0)
+
+records = read_fasta(aln)
+fallback = build_upgma(records)
+if fallback:
+    final.write_text(fallback)
+    previous_status = status.read_text(errors='replace').strip() if status.exists() else 'unknown'
+    status.write_text(previous_status + '; fallback_distance_tree_generated\n')
+    with runlog.open('a') as log:
+        log.write('\nIQ-TREE final.treefile was missing, invalid, or placeholder.\n')
+        log.write('Generated deterministic UPGMA-like fallback Newick from filtered core alignment.\n')
+        log.write('Bootstrap labels are not available for fallback trees; rerun IQ-TREE successfully to obtain bootstrap values.\n')
+        log.write(f'Fallback samples: {len(records)}\n')
+else:
+    # Last resort: keep a syntactically valid two-tip diagnostic tree so renderer does not break.
+    final.write_text('(No_valid_tree_A:0.0,No_valid_tree_B:0.0);\n')
+    previous_status = status.read_text(errors='replace').strip() if status.exists() else 'unknown'
+    status.write_text(previous_status + '; diagnostic_two_tip_tree_generated\n')
+    with runlog.open('a') as log:
+        log.write('\nCould not generate fallback tree from alignment; wrote diagnostic two-tip tree.\n')
+PY
+
+    [ -s iqtree/iqtree.report ] || echo "IQ-TREE report not available; see iqtree_status.txt and logs/iqtree.run.log." > iqtree/iqtree.report
+    [ -s iqtree/iqtree.log ] || echo "IQ-TREE log not available; see iqtree_status.txt and logs/iqtree.run.log." > iqtree/iqtree.log
+  >>>
+
+  output {
+    File final_tree = "iqtree/final.treefile"
+    File iqtree_report = "iqtree/iqtree.report"
+    File iqtree_log = "iqtree/iqtree.log"
+    File iqtree_status = "iqtree/iqtree_status.txt"
+    File excluded_from_iqtree = "iqtree/excluded_from_iqtree.tsv"
+    File included_in_iqtree = "iqtree/included_in_iqtree.tsv"
+    File alignment_filtering_summary = "iqtree/alignment_filtering_summary.txt"
+  }
+
+  runtime {
+    # Docker is invoked manually inside the command for this task to avoid
+    # Cromwell local-backend Containers-to-String docker coercion failures.
+    cpu: cpu
+    memory: "~{memory_gb} GB"
+  }
+}
+
 
 task MERGE_MYC_REPORTS {
   input {
@@ -1467,10 +2810,18 @@ task MERGE_MYC_REPORTS {
     Array[File] bracken_reports
     Array[File] assembly_summaries
     Array[File] quast_reports
-    Array[File] busco_summaries
-    Array[File] busco_summary_tsvs
+    Array[File]? busco_summaries
+    Array[File]? busco_summary_tsvs
+    Array[File]? compleasm_summaries
+    Array[File]? compleasm_summary_tsvs
     Array[File] amr_summaries
     Array[File] amr_htmls
+    File? phylogeny_group_summary
+    Array[File] phylogeny_core_alignments
+    Array[File] phylogeny_newick_trees
+    Array[File] phylogeny_iqtree_reports
+    Array[File] phylogeny_tree_images
+    File? surveillance_metadata_tsv
   }
 
   command <<<
@@ -1482,9 +2833,19 @@ task MERGE_MYC_REPORTS {
     cp ~{sep=' ' bracken_reports} report_inputs/ 2>/dev/null || true
     cp ~{sep=' ' assembly_summaries} report_inputs/ 2>/dev/null || true
     cp ~{sep=' ' quast_reports} report_inputs/ 2>/dev/null || true
-    cp ~{sep=' ' busco_summaries} report_inputs/ 2>/dev/null || true
-    cp ~{sep=' ' busco_summary_tsvs} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' select_first([busco_summaries, []])} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' select_first([busco_summary_tsvs, []])} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' select_first([compleasm_summaries, []])} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' select_first([compleasm_summary_tsvs, []])} report_inputs/ 2>/dev/null || true
     cp ~{sep=' ' amr_summaries} report_inputs/ 2>/dev/null || true
+    PHYLO_SUMMARY="~{default='' phylogeny_group_summary}"
+    if [ -n "$PHYLO_SUMMARY" ] && [ -f "$PHYLO_SUMMARY" ]; then cp "$PHYLO_SUMMARY" report_inputs/ 2>/dev/null || true; fi
+    cp ~{sep=' ' phylogeny_core_alignments} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' phylogeny_newick_trees} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' phylogeny_iqtree_reports} report_inputs/ 2>/dev/null || true
+    cp ~{sep=' ' phylogeny_tree_images} report_inputs/ 2>/dev/null || true
+    METADATA_TSV="~{default='' surveillance_metadata_tsv}"
+    if [ -n "$METADATA_TSV" ] && [ -f "$METADATA_TSV" ]; then cp "$METADATA_TSV" report_inputs/surveillance_metadata.tsv 2>/dev/null || true; fi
     cp ~{sep=' ' trimming_htmls} report_links/ 2>/dev/null || true
     cp ~{sep=' ' amr_htmls} report_links/ 2>/dev/null || true
 
@@ -1494,7 +2855,7 @@ task MERGE_MYC_REPORTS {
     done
 
     python3 <<'PY'
-import csv, html, pathlib, re, datetime, statistics
+import csv, html, pathlib, re, datetime, statistics, base64
 from collections import Counter
 
 root = pathlib.Path("report_inputs")
@@ -1637,7 +2998,7 @@ def parse_quast():
 
 def parse_busco():
     """
-    Parse normalized BUSCO TSVs emitted by the BUSCO task.
+    Parse normalized Compleasm TSVs emitted with BUSCO-compatible column names.
 
     Fix applied:
     - accepts both <sample>.busco_summary.tsv and <sample>.busco.summary.tsv
@@ -1682,7 +3043,7 @@ def parse_busco():
                 "Single_copy_BUSCO_%":"NA", "Duplicated_BUSCO_%":"NA",
                 "Fragmented_BUSCO_%":"NA", "Missing_BUSCO_%":"NA",
                 "BUSCO_n":"NA", "busco_status":"not_parsed_or_failed",
-                "busco_details":"No normalized BUSCO TSV was found."
+                "busco_details":"No normalized Compleasm TSV was found."
             }
             m = re.search(r"C:([0-9.]+)%\s*\[\s*S:([0-9.]+)%\s*,\s*D:([0-9.]+)%\s*\]\s*,\s*F:([0-9.]+)%\s*,\s*M:([0-9.]+)%\s*,\s*n:(\d+)", txt)
             if m:
@@ -1694,11 +3055,11 @@ def parse_busco():
                     "Missing_BUSCO_%": m.group(5),
                     "BUSCO_n": m.group(6),
                     "busco_status":"parsed",
-                    "busco_details":"Parsed from native BUSCO short-summary text."
+                    "busco_details":"Parsed from native BUSCO/Compleasm summary text."
                 })
             by[sample]=row
 
-    return [by.get(s,{"sample_id":s,"Complete_BUSCO_%":"NA","Single_copy_BUSCO_%":"NA","Duplicated_BUSCO_%":"NA","Fragmented_BUSCO_%":"NA","Missing_BUSCO_%":"NA","BUSCO_n":"NA","busco_status":"missing","busco_details":"No BUSCO output was found for this sample."}) for s in samples]
+    return [by.get(s,{"sample_id":s,"Complete_BUSCO_%":"NA","Single_copy_BUSCO_%":"NA","Duplicated_BUSCO_%":"NA","Fragmented_BUSCO_%":"NA","Missing_BUSCO_%":"NA","BUSCO_n":"NA","busco_status":"missing","busco_details":"No Compleasm output was found for this sample."}) for s in samples]
 
 def parse_amr():
     rows=[]
@@ -1796,6 +3157,7 @@ amr_rows=parse_amr()
 
 species_by={r["sample_id"]:r for r in species_rows}
 assembly_by={r["sample_id"]:r for r in assembly_rows}
+quast_by={r.get("sample_id",""):r for r in quast_rows}
 busco_by={r["sample_id"]:r for r in busco_rows}
 
 def has_amr_hit(r):
@@ -1854,18 +3216,22 @@ def sample_cards():
     for s in samples:
         sp=species_by.get(s,{})
         asm=assembly_by.get(s,{})
-        bus=busco_by.get(s,{})
+        qst=quast_by.get(s,{})
+        conf_label, conf_kind, conf_note = species_confidence(s)
+        overall, overall_kind, overall_note = surveillance_status(s)
+        phy_label, phy_kind, phy_note = phylogeny_status(s)
         cards.append(f"""
-        <div class="sample-card">
-          <div class="sample-head"><h3>{esc(s)}</h3>{species_badge(sp.get("species","Not determined"))}</div>
+        <details class="sample-card" open>
+          <summary class="sample-head"><h3>{esc(s)}</h3><span>{species_badge(sp.get("species","Not determined"))} {badge(overall, overall_kind)}</span></summary>
           <div class="mini-grid">
             <div><small>Species reads</small><strong>{esc(sp.get("percent_reads","NA"))}%</strong></div>
-            <div><small>Contigs</small><strong>{esc(asm.get("contigs","NA"))}</strong></div>
-            <div><small>N50</small><strong>{esc(asm.get("n50","NA"))}</strong></div>
-            <div><small>BUSCO complete</small><strong>{esc(bus.get("Complete_BUSCO_%","NA"))}%</strong></div>
+            <div><small>Contigs</small><strong>{esc(asm.get("contigs", qst.get("# contigs","NA")))}</strong></div>
+            <div><small>N50</small><strong>{esc(asm.get("n50", qst.get("N50","NA")))}</strong></div>
+            <div><small>GC (%)</small><strong>{esc(qst.get("GC (%)","NA"))}</strong></div>
           </div>
-          <p>{amr_card_badge(s)}</p>
-        </div>""")
+          <p>{amr_card_badge(s)} {badge('Species confidence: ' + conf_label, conf_kind)} {badge('Phylogeny: ' + phy_label, phy_kind)}</p>
+          <div class="details-note"><strong>Interpretation:</strong> {esc(overall_note)}. <strong>Species note:</strong> {esc(conf_note)}. <strong>Phylogeny note:</strong> {esc(phy_note)}</div>
+        </details>""")
     return ''.join(cards)
 
 top_species = "Not determined"
@@ -1882,7 +3248,7 @@ n50_vals=[safe_float(r.get("n50")) for r in assembly_rows if safe_float(r.get("n
 median_n50=f"{statistics.median(n50_vals):,.0f}" if n50_vals else "NA"
 total_hits=sum(1 for r in amr_rows if has_amr_hit(r))
 
-summary_cols=["sample_id","species","percent_reads","contigs","n50","Complete_BUSCO_%","amr_hits"]
+summary_cols=["sample_id","species","percent_reads","contigs","n50","gc_percent","amr_hits"]
 summary_rows=[]
 for s in samples:
     summary_rows.append({
@@ -1891,7 +3257,7 @@ for s in samples:
         "percent_reads":species_by.get(s,{}).get("percent_reads","NA"),
         "contigs":assembly_by.get(s,{}).get("contigs","NA"),
         "n50":assembly_by.get(s,{}).get("n50","NA"),
-        "Complete_BUSCO_%":busco_by.get(s,{}).get("Complete_BUSCO_%","NA"),
+        "gc_percent":quast_by.get(s,{}).get("GC (%)","NA"),
         "amr_hits":str(amr_by_count[s])
     })
 
@@ -1903,27 +3269,314 @@ with open("rMAP-Myc-Candida-Candida_summary.tsv","w",newline="") as f:
 species_table=table(species_rows, ["sample_id","species","percent_reads","clade_reads","taxon_reads","taxid","evidence"], {"sample_id":"Sample","species":"Top species","percent_reads":"Reads (%)"}, {"species":lambda v,r: species_badge(v), "percent_reads":lambda v,r: bar(v)})
 assembly_table=table(assembly_rows, ["sample_id","contigs","total_bp","n50","largest_contig"], {"sample_id":"Sample","total_bp":"Total bp","n50":"N50","largest_contig":"Largest contig"})
 quast_table=table(quast_rows, ["sample_id","# contigs","Largest contig","Total length","GC (%)","N50"], {"sample_id":"Sample"})
-busco_table=table(busco_rows, ["sample_id","Complete_BUSCO_%","Single_copy_BUSCO_%","Duplicated_BUSCO_%","Fragmented_BUSCO_%","Missing_BUSCO_%","BUSCO_n","busco_status","busco_details"], {"sample_id":"Sample","BUSCO_n":"BUSCO markers","busco_status":"Status","busco_details":"BUSCO note"}, {"Complete_BUSCO_%":lambda v,r: bar(v), "Missing_BUSCO_%":lambda v,r: bar(v), "busco_status":lambda v,r: badge(v, "success" if str(v).upper() in ["PASS","PARSED"] else "warn")})
+busco_table=table(busco_rows, ["sample_id","Complete_BUSCO_%","Single_copy_BUSCO_%","Duplicated_BUSCO_%","Fragmented_BUSCO_%","Missing_BUSCO_%","BUSCO_n","busco_status","busco_details"], {"sample_id":"Sample","BUSCO_n":"Markers","busco_status":"Status","busco_details":"Compleasm note"}, {"Complete_BUSCO_%":lambda v,r: bar(v), "Missing_BUSCO_%":lambda v,r: bar(v), "busco_status":lambda v,r: badge(v, "success" if str(v).upper() in ["PASS","PARSED"] else "warn")})
 amr_table=table(amr_rows, ["sample_id","species","drug_class","drug","gene","mutation","effect","evidence_level","interpretation"], {"sample_id":"Sample","gene":"Gene / status"}, {"gene":lambda v,r: badge("No marker — not susceptible","muted") if r.get("hit_status")=="no_hit" else (badge("Positive control failed","warn") if r.get("hit_status")=="positive_control_failed" else (badge("Scanner failed","muted") if r.get("hit_status")=="scanner_failed" else badge(esc(v),"amrhit")))})
+
+# -------------------------------------------------------------------------
+# rc173 surveillance-report additions:
+# 1) optional surveillance metadata
+# 2) integrated readiness dashboard
+# 3) species-confidence/mixed-sample warnings
+# 4) phylogeny eligibility summary
+# 5) pairwise SNP distance table from core-SNP alignments
+# -------------------------------------------------------------------------
+
+def parse_metadata():
+    p = root / "surveillance_metadata.tsv"
+    if not p.exists() or p.stat().st_size == 0:
+        return [], {}
+    rows=[]
+    try:
+        with p.open(errors="ignore", newline="") as f:
+            reader=csv.DictReader(f, delimiter="\t")
+            for row in reader:
+                sid = first(row, ["sample_id","sample","sample_name","isolate_id","isolate"], "")
+                if sid:
+                    row["sample_id"] = sid
+                rows.append(row)
+    except Exception:
+        rows=[]
+    return rows, {r.get("sample_id",""):r for r in rows if r.get("sample_id")}
+
+metadata_rows, metadata_by = parse_metadata()
+
+def species_confidence(sample):
+    pct = safe_float(species_by.get(sample,{}).get("percent_reads"))
+    if pct is None:
+        return "Not determined", "muted", "No species abundance value found"
+    if pct >= 95:
+        return "High", "success", "Top species abundance ≥95%"
+    if pct >= 80:
+        return "Moderate", "warn", "Top species abundance 80–95%; review for possible mixed signal"
+    return "Low / review", "warn", "Top species abundance <80%; possible mixed sample, contamination, or weak species assignment"
+
+def assembly_status(sample):
+    asm = assembly_by.get(sample,{})
+    n50 = safe_float(asm.get("n50"))
+    contigs = safe_float(str(asm.get("contigs","NA")).replace(",",""))
+    if n50 is None and contigs is None:
+        return "Not run", "muted", "No assembly summary found"
+    warnings=[]
+    if n50 is not None and n50 < 20000:
+        warnings.append("low N50")
+    if contigs is not None and contigs > 2500:
+        warnings.append("high contig count")
+    if warnings:
+        return "Review", "warn", "; ".join(warnings)
+    return "Pass", "success", "Assembly continuity acceptable for surveillance screening"
+
+def quast_contiguity_status(sample):
+    label, kind, note = assembly_status(sample)
+    if label == "Pass":
+        return "Pass", "success", "QUAST contiguity metrics are acceptable for surveillance screening"
+    if label == "Review":
+        return "Review", "warn", "QUAST contiguity metrics suggest the assembly should be reviewed"
+    return "Not available", "muted", "QUAST/assembly metrics were not available"
+
+def completeness_status(sample):
+    # rc175 QUAST-only mode: no gene-completeness tool is run.
+    return "Not assessed", "muted", "Gene completeness was not assessed in QUAST-only mode"
+
+def parse_phylogeny_summary():
+    rows = []
+    for p in sorted(root.glob("*phylogeny_group_summary.tsv")):
+        try:
+            with p.open(errors="ignore", newline="") as f:
+                for row in csv.DictReader(f, delimiter="\t"):
+                    rows.append(row)
+        except Exception:
+            pass
+    return rows
+
+def phylogeny_by_species():
+    out={}
+    for row in parse_phylogeny_summary():
+        sp = str(row.get("species","")).strip()
+        if sp:
+            out[sp] = row
+    return out
+
+phylo_by_sp = phylogeny_by_species()
+
+def phylogeny_status(sample):
+    sp = species_by.get(sample,{}).get("species","Not determined")
+    row = phylo_by_sp.get(sp)
+    if not row:
+        return "Not assessed", "muted", "No phylogeny group summary for this species"
+    status = str(row.get("status","NA"))
+    if status.upper() == "PASS":
+        return "Included / eligible", "success", f"Species group passed phylogeny stage ({row.get('sample_count','NA')} samples)"
+    if status.startswith("SKIPPED"):
+        return "Excluded", "warn", row.get("notes", status)
+    return "Review", "warn", row.get("notes", status)
+
+def surveillance_status(sample):
+    sp_label, sp_kind, sp_note = species_confidence(sample)
+    asm_label, asm_kind, asm_note = assembly_status(sample)
+    phy_label, phy_kind, phy_note = phylogeny_status(sample)
+    hits = amr_by_count[sample]
+    failures = amr_fail_by_count[sample]
+    reasons=[]
+    if sp_kind == "warn" or sp_label == "Not determined": reasons.append("species confidence")
+    if asm_kind == "warn" or asm_label == "Not run": reasons.append("QUAST assembly QC")
+    if failures > 0: reasons.append("AMR scanner")
+    if hits > 0: reasons.append("AMR marker detected")
+    if not reasons:
+        return "Ready for surveillance interpretation", "success", "No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status"
+    return "Review", "warn", "; ".join(reasons)
+
+def metadata_value(sample, keys):
+    row = metadata_by.get(sample,{})
+    return first(row, keys, "NA") if row else "NA"
+
+def build_surveillance_rows():
+    rows=[]
+    for s in samples:
+        sp_label, sp_kind, sp_note = species_confidence(s)
+        asm_label, asm_kind, asm_note = assembly_status(s)
+        quast_label, quast_kind, quast_note = quast_contiguity_status(s)
+        phy_label, phy_kind, phy_note = phylogeny_status(s)
+        overall, overall_kind, overall_note = surveillance_status(s)
+        rows.append({
+            "sample_id": s,
+            "collection_date": metadata_value(s, ["collection_date","date","sampling_date"]),
+            "site": metadata_value(s, ["site","facility","ward_or_facility","location"]),
+            "species": species_by.get(s,{}).get("species","Not determined"),
+            "species_confidence": sp_label,
+            "assembly_qc": asm_label,
+            "quast_contiguity_qc": quast_label,
+            "amr_screen": f"{amr_by_count[s]} marker(s)" if amr_by_count[s] else ("AMR scanner warning" if amr_fail_by_count[s] else "No curated marker detected"),
+            "phylogeny_status": phy_label,
+            "surveillance_status": overall,
+            "interpretation_note": overall_note
+        })
+    return rows
+
+surveillance_rows = build_surveillance_rows()
+with open("rMAP_Candida_surveillance_summary.tsv","w",newline="") as f:
+    fields=["sample_id","collection_date","site","species","species_confidence","assembly_qc","quast_contiguity_qc","amr_screen","phylogeny_status","surveillance_status","interpretation_note"]
+    w=csv.DictWriter(f, fieldnames=fields, delimiter="\t")
+    w.writeheader(); w.writerows(surveillance_rows)
+
+surveillance_table = table(surveillance_rows,
+    ["sample_id","collection_date","site","species","species_confidence","assembly_qc","quast_contiguity_qc","amr_screen","phylogeny_status","surveillance_status","interpretation_note"],
+    {"sample_id":"Sample","collection_date":"Collection date","species_confidence":"Species confidence","assembly_qc":"Assembly QC","quast_contiguity_qc":"QUAST contiguity QC","amr_screen":"AMR screen","phylogeny_status":"Phylogeny","surveillance_status":"Surveillance status","interpretation_note":"Reason / note"},
+    {
+        "species": lambda v,r: species_badge(v),
+        "species_confidence": lambda v,r: badge(v, "success" if v=="High" else ("warn" if "Low" in v or v=="Moderate" else "muted")),
+        "assembly_qc": lambda v,r: badge(v, "success" if v=="Pass" else ("warn" if "Review" in v or "Fail" in v else "muted")),
+        "quast_contiguity_qc": lambda v,r: badge(v, "success" if v=="Pass" else ("warn" if "Review" in v or "Fail" in v else "muted")),
+        "amr_screen": lambda v,r: badge(v, "amrhit" if "marker" in str(v) and not str(v).startswith("No") else ("warn" if "warning" in str(v).lower() else "muted")),
+        "phylogeny_status": lambda v,r: badge(v, "success" if str(v).startswith("Included") else ("warn" if v in {"Excluded","Review"} else "muted")),
+        "surveillance_status": lambda v,r: badge(v, "success" if str(v).startswith("Ready") else "warn")
+    })
+
+if metadata_rows:
+    # Show a compact metadata table with the most surveillance-relevant columns available.
+    preferred=["sample_id","country","site","collection_date","specimen_type","patient_group","ward_or_facility","sequencing_platform"]
+    available=[]
+    for c in preferred:
+        if any(c in row for row in metadata_rows):
+            available.append(c)
+    if "sample_id" not in available:
+        available.insert(0,"sample_id")
+    metadata_table = table(metadata_rows, available, {"sample_id":"Sample"})
+else:
+    metadata_table = '<div class="note"><strong>No surveillance metadata TSV was provided.</strong> Add <code>rMAP_Candida.surveillance_metadata_tsv</code> to your input JSON to display collection date, country/site, specimen type, patient group, facility/ward, and sequencing platform.</div>'
+
+def read_alignment(path):
+    seqs={}; name=None; chunks=[]
+    try:
+        with open(path, errors="ignore") as fh:
+            for line in fh:
+                line=line.strip()
+                if not line: continue
+                if line.startswith(">"):
+                    if name is not None: seqs[name]="".join(chunks).upper()
+                    name=line[1:].split()[0]; chunks=[]
+                else:
+                    chunks.append(line)
+            if name is not None: seqs[name]="".join(chunks).upper()
+    except Exception:
+        return {}
+    return seqs
+
+def pairwise_distances_from_alignment(path):
+    seqs=read_alignment(path)
+    names=list(seqs)
+    rows=[]
+    valid=set("ACGT")
+    label=path.name.replace(".core_snps.aln","").replace("_"," ")
+    for i in range(len(names)):
+        for j in range(i+1,len(names)):
+            a,b=names[i],names[j]
+            sa,sb=seqs[a],seqs[b]
+            L=min(len(sa),len(sb))
+            compared=0; dist=0
+            for k in range(L):
+                ca,cb=sa[k],sb[k]
+                if ca in valid and cb in valid:
+                    compared += 1
+                    if ca != cb: dist += 1
+            rows.append({"species":label,"sample_a":a,"sample_b":b,"snp_distance":str(dist),"compared_sites":str(compared)})
+    return rows
+
+def build_snp_distance_section():
+    distance_rows=[]
+    for p in sorted(root.glob("*.core_snps.aln")):
+        distance_rows.extend(pairwise_distances_from_alignment(p))
+    if not distance_rows:
+        pathlib.Path("rMAP_Candida_pairwise_snp_distances.tsv").write_text("species\tsample_a\tsample_b\tsnp_distance\tcompared_sites\n")
+        return '<p>No core-SNP alignment was available for pairwise SNP-distance calculation.</p>'
+    with open("rMAP_Candida_pairwise_snp_distances.tsv","w",newline="") as f:
+        fields=["species","sample_a","sample_b","snp_distance","compared_sites"]
+        w=csv.DictWriter(f, fieldnames=fields, delimiter="\t")
+        w.writeheader(); w.writerows(distance_rows)
+    nearest={}
+    for r in distance_rows:
+        try: d=int(r["snp_distance"])
+        except Exception: continue
+        for a,b in [(r["sample_a"],r["sample_b"]),(r["sample_b"],r["sample_a"] )]:
+            if a not in nearest or d < nearest[a]["snp_distance_num"]:
+                nearest[a] = {"sample_id":a,"closest_sample":b,"snp_distance":str(d),"snp_distance_num":d,"species":r["species"],"cluster_flag":"Possible close genetic relationship" if d <= 25 else "Distinct / review with metadata"}
+    nearest_rows=[{k:v for k,v in row.items() if k!="snp_distance_num"} for row in nearest.values()]
+    nearest_rows=sorted(nearest_rows, key=lambda x:(x.get("species",""), x.get("sample_id","")))
+    nearest_table=table(nearest_rows, ["species","sample_id","closest_sample","snp_distance","cluster_flag"], {"sample_id":"Sample","closest_sample":"Closest sample","snp_distance":"SNP distance","cluster_flag":"Conservative cluster flag"}, {"cluster_flag":lambda v,r: badge(v,"warn" if str(v).startswith("Possible") else "muted")})
+    pair_table=table(distance_rows, ["species","sample_a","sample_b","snp_distance","compared_sites"], {"sample_a":"Sample A","sample_b":"Sample B","snp_distance":"SNP distance","compared_sites":"Compared core-SNP sites"})
+    return '<h3>Closest-neighbor summary</h3>' + nearest_table + '<h3>Pairwise SNP-distance matrix/table</h3>' + pair_table + '<div class="note"><strong>SNP-distance interpretation:</strong> low SNP distances suggest close genetic relatedness but should not be interpreted as transmission without epidemiological metadata, recombination-aware analysis, and species-specific validation.</div>'
+
+snp_distance_section = build_snp_distance_section()
+
+def parse_phylogeny_summary():
+    rows = []
+    for p in sorted(root.glob("*phylogeny_group_summary.tsv")):
+        try:
+            with p.open(errors="ignore", newline="") as f:
+                for row in csv.DictReader(f, delimiter="\t"):
+                    rows.append(row)
+        except Exception:
+            pass
+    return rows
+
+def build_phylogeny_section():
+    phylo_rows = parse_phylogeny_summary()
+    image_paths = sorted(list(root.glob("*.core_snp_tree.png")) + list(root.glob("*.core_snp_tree.svg")))
+
+    parts = []
+    if phylo_rows:
+        cols = ["species","status","sample_count","branch","ploidy","variable_sites","notes"]
+        parts.append(table(phylo_rows, cols, {
+            "species":"Species",
+            "status":"Status",
+            "sample_count":"Samples",
+            "branch":"Variant-calling branch",
+            "ploidy":"Ploidy model",
+            "variable_sites":"Core variable sites",
+            "notes":"Notes"
+        }, {
+            "species":lambda v,r: species_badge(v),
+            "status":lambda v,r: badge(v, "success" if str(v).upper() in {"BUILT","TREE_READY","PASS"} else "warn")
+        }))
+
+    if image_paths:
+        for img in image_paths:
+            label = img.name.replace(".core_snp_tree.png","").replace(".core_snp_tree.svg","").replace("_"," ")
+            try:
+                if img.suffix.lower() == ".svg":
+                    data = img.read_text(errors="replace")
+                    parts.append(f'<h3>{esc(label)}</h3><div class="tree-panel">{data}</div>')
+                else:
+                    encoded = base64.b64encode(img.read_bytes()).decode("ascii")
+                    parts.append(f'<h3>{esc(label)}</h3><div class="tree-panel"><img class="tree-img" src="data:image/png;base64,{encoded}" alt="{esc(label)} core-SNP phylogenetic tree"></div>')
+            except Exception as exc:
+                parts.append(f'<p>Could not embed tree image {esc(img.name)}: {esc(exc)}</p>')
+
+    if not parts:
+        return '<p>Phylogeny was not enabled or no eligible species group met the minimum sample/reference requirements.</p>'
+
+    parts.append('<div class="note"><strong>Phylogeny interpretation note:</strong> rMAP-Candida builds one tree per species. Mixed-species Candida phylogenies are intentionally avoided. Treat these trees as species-level genomic relatedness visualizations unless recombination filtering and epidemiologic metadata support transmission interpretation.</div>')
+    return ''.join(parts)
+
+phylogeny_section = build_phylogeny_section()
 
 now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 css = """
 body{margin:0;background:#f3f6fb;color:#13242d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}
-.hero{background:linear-gradient(125deg,#00524d,#146c8f,#2563eb);color:white;padding:44px 0 108px}
+.hero{background:linear-gradient(125deg,#00524d,#146c8f,#2563eb);color:white;padding:44px 0 72px}
 .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
 .kicker{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:800}
 h1{font-size:38px;margin:10px 0 14px}
 .hero p{max-width:760px;line-height:1.55}
 .pill{display:inline-block;padding:8px 12px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:12px;margin-right:8px}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:-52px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:24px;margin-bottom:24px}
 .metric{background:white;border-radius:18px;padding:22px;box-shadow:0 12px 30px #0f172a18}
 .metric small{display:block;text-transform:uppercase;color:#64748b;letter-spacing:.1em;font-weight:800}
 .metric strong{display:block;font-size:30px;margin-top:8px}
 .card{background:white;border-radius:18px;padding:24px;margin:22px 0;box-shadow:0 8px 25px #0f172a12;border:1px solid #e5e7eb}
 .two{display:grid;grid-template-columns:1.25fr .85fr;gap:24px}
 .sample-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
-.sample-card{border:1px solid #e5e7eb;border-radius:18px;padding:20px;background:#fff}
+.sample-card{border:1px solid #e5e7eb;border-radius:18px;padding:20px;background:#fff}.sample-card summary{cursor:pointer;list-style:none}.sample-card summary::-webkit-details-marker{display:none}.details-note{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-top:12px;color:#334155}.toc{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:white;border:1px solid #e5e7eb;border-radius:16px;padding:14px 16px;margin:24px 0 0;box-shadow:0 8px 25px #0f172a12}.toc a{display:inline-block;margin:6px 10px 6px 0;font-weight:800;color:#1d4ed8;text-decoration:none}.downloads{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.download-pill{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px;font-weight:800;color:#334155}
 .sample-head{display:flex;justify-content:space-between;gap:12px;align-items:center}
 .sample-head h3{margin:0}
 .mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
@@ -1937,6 +3590,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:12px;bord
 .bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;min-width:130px}.bar span{display:block;height:100%;background:linear-gradient(90deg,#0f766e,#2563eb)}
 .dist-row{display:grid;grid-template-columns:180px 1fr 30px;gap:12px;align-items:center;margin:12px 0}
 .note{border-left:5px solid #0f766e;background:#ecfdf5;border-radius:12px;padding:14px}
+.tree-panel{overflow:auto;border:1px solid #e5e7eb;border-radius:16px;background:#fff;padding:16px;margin:14px 0}
+.tree-img{max-width:100%;height:auto;display:block}
 .footer{text-align:center;color:#64748b;padding:40px 0}
 @media(max-width:900px){.metrics,.sample-grid,.two{grid-template-columns:1fr}.mini-grid{grid-template-columns:repeat(2,1fr)}}
 """
@@ -1947,27 +3602,31 @@ html_doc=f"""<!DOCTYPE html>
 <section class="hero"><div class="wrap">
 <div class="kicker">rMAP-Myc-Candida surveillance report</div>
 <h1>Integrated Candida fungal genomics report</h1>
-<p>This report summarizes paired-end fungal genome analysis for Candida-focused surveillance, combining read QC, Kraken2/Bracken species typing, MEGAHIT assembly, assembly quality assessment, BUSCO completeness, and genomic antifungal-resistance screening.</p>
+<p>This report summarizes paired-end fungal genome analysis for Candida-focused surveillance, combining read QC, Kraken2/Bracken species typing, MEGAHIT assembly, QUAST-only assembly contiguity assessment, and genomic antifungal-resistance screening.</p>
 <span class="pill">Generated {esc(now)}</span><span class="pill">Custom Candida Kraken2/Bracken DB</span><span class="pill">MEGAHIT assembly</span>
 </div></section>
 <div class="wrap">
+<nav class="toc"><a href="#executive">Executive summary</a><a href="#surveillance">Surveillance dashboard</a><a href="#metadata">Metadata</a><a href="#samples">Samples</a><a href="#species">Species</a><a href="#assembly">Assembly QC</a><a href="#amr">AMR</a><a href="#phylogeny">Phylogeny</a><a href="#snpdist">SNP distances</a><a href="#provenance">Outputs</a></nav>
 <section class="metrics">
 <div class="metric"><small>Samples analyzed</small><strong>{len(samples)}</strong></div>
 <div class="metric"><small>Top species groups</small><strong>{len(species_counts)}</strong></div>
 <div class="metric"><small>Total AMR hits</small><strong>{total_hits}</strong></div>
 <div class="metric"><small>Median N50</small><strong>{esc(median_n50)}</strong></div>
 </section>
-<section class="card two"><div><h2>1. Executive summary</h2>
-<p>The primary detected fungal species group was {species_badge(top_species)}. The sample-level cards below provide a compact interpretation of species assignment, assembly continuity, BUSCO completeness, and genomic AMR screening status.</p>
+<section class="card two" id="executive"><div><h2>1. Executive summary</h2>
+<p>The primary detected fungal species group was {species_badge(top_species)}. The sample-level cards below provide a compact interpretation of species assignment, species assignment, QUAST assembly-contiguity metrics, phylogeny status, and genomic AMR screening status.</p>
 <div class="note"><strong>Interpretation note:</strong> genomic antifungal-resistance findings should be treated as screening evidence. Clinically important results should be interpreted with isolate metadata, species identity, validated mutation catalogues, and phenotypic antifungal susceptibility testing where required.</div></div>
 <div><h3>Species distribution</h3>{species_dist or '<p>No species calls available.</p>'}</div></section>
-<section class="card"><h2>2. Sample-level surveillance summary</h2><div class="sample-grid">{sample_cards()}</div></section>
-<section class="card"><h2>3. Candida species typing using Kraken2/Bracken</h2><p>Top species calls are derived from the custom Candida-focused Kraken2/Bracken database bundled in the species-typing Docker image.</p>{species_table}</section>
-<section class="card"><h2>4. MEGAHIT assembly summary</h2>{assembly_table}</section>
-<section class="card"><h2>5. Assembly quality assessment with QUAST</h2><p>QUAST values are parsed from the native per-sample <code>report.tsv</code> format and transposed into one row per sample.</p>{quast_table}</section>
-<section class="card"><h2>6. BUSCO fungal completeness</h2><p>BUSCO is run per assembly. For Candida, this patched workflow defaults to saccharomycetes_odb10 and retries ascomycota_odb10/fungi_odb10 if needed. If values remain NA, inspect the BUSCO_STATUS and BUSCO_NOTE columns because the task now reports the real reason instead of silently masking failures.</p>{busco_table}</section>
-<section class="card"><h2>7. Fungal antifungal-resistance characterization</h2><p>This section reports mutation/gene-level evidence emitted by the configured fungal AMR container. A “No marker detected” result is not a susceptible call. Fluconazole resistance can be caused by ERG11 alterations, TAC1/UPC2/MRR1/PDR1-mediated efflux, aneuploidy/LOH, copy-number changes, species-specific mechanisms, or markers absent from the current AMR database.</p>{amr_table}</section>
-<section class="card"><h2>8. Output navigation and provenance</h2><ul><li>Per-sample Kraken2, Bracken, FASTQ QC, assembly, QUAST, BUSCO, and AMR files are available in the Cromwell execution outputs.</li><li>The workflow also emits <code>rMAP-Myc-Candida-Candida_summary.tsv</code> for downstream tabular review.</li><li>Dockerized execution supports reproducibility across local Cromwell and cloud environments.</li></ul></section>
+<section class="card" id="surveillance"><h2>2. Surveillance readiness and interpretation dashboard</h2><p>This integrated table combines species confidence, QUAST assembly-contiguity metrics, AMR marker status, phylogeny eligibility, and optional metadata into a practical surveillance-readiness view.</p>{surveillance_table}</section>
+<section class="card" id="metadata"><h2>3. Surveillance metadata</h2>{metadata_table}</section>
+<section class="card" id="samples"><h2>4. Sample-level surveillance summary</h2><div class="sample-grid">{sample_cards()}</div></section>
+<section class="card" id="species"><h2>5. Candida species typing using Kraken2/Bracken</h2><p>Top species calls are derived from the custom Candida-focused Kraken2/Bracken database bundled in the species-typing Docker image.</p>{species_table}</section>
+<section class="card" id="assembly"><h2>6. MEGAHIT assembly summary</h2>{assembly_table}</section>
+<section class="card"><h2>7. Assembly quality assessment with QUAST</h2><p>QUAST values are parsed from the native per-sample <code>report.tsv</code> format and transposed into one row per sample. This default surveillance mode reports QUAST assembly contiguity metrics such as contig count, total length, N50, largest contig, and GC percentage. It is very fast. BUSCO and Compleasm tasks are available as optional modules, but they are disabled by default in the recommended JSON and are not required for this QUAST-based assembly assessment.</p>{quast_table}</section>
+<section class="card" id="amr"><h2>8. Fungal antifungal-resistance characterization</h2><p>This section reports mutation/gene-level evidence emitted by the configured fungal AMR container. A “No marker detected” result is not a susceptible call. Fluconazole resistance can be caused by ERG11 alterations, TAC1/UPC2/MRR1/PDR1-mediated efflux, aneuploidy/LOH, copy-number changes, species-specific mechanisms, or markers absent from the current AMR database.</p>{amr_table}</section>
+<section class="card" id="phylogeny"><h2>9. Species-aware core-SNP phylogeny</h2><p>When enabled, rMAP-Candida builds phylogenies separately for each species with sufficient samples and a matching reference. Mixed-species phylogenies are intentionally avoided. Outputs include species-group summaries, core-SNP alignments, and IQ-TREE Newick trees.</p>{phylogeny_section if 'phylogeny_section' in globals() else '<p>Phylogeny was not enabled or no eligible species group met the minimum sample/reference requirements.</p>'}</section>
+<section class="card" id="snpdist"><h2>10. Species-aware pairwise SNP distances and closest-neighbor summary</h2>{snp_distance_section}</section>
+<section class="card" id="provenance"><h2>11. Output navigation and provenance</h2><p>The workflow emits downloadable tabular outputs in addition to this integrated HTML report.</p><div class="downloads"><div class="download-pill">rMAP-Myc-Candida-Candida_summary.tsv</div><div class="download-pill">rMAP_Candida_surveillance_summary.tsv</div><div class="download-pill">rMAP_Candida_pairwise_snp_distances.tsv</div></div><ul><li>Per-sample Kraken2, Bracken, FASTQ QC, assembly, QUAST, AMR, and optional phylogeny files are available in the Cromwell execution outputs.</li><li>Dockerized execution supports reproducibility across local Cromwell and cloud environments.</li></ul></section>
 <div class="footer">rMAP-Myc-Candida | Rapid Mycological Analysis Pipeline for Candida</div>
 </div></body></html>"""
 
@@ -1978,12 +3637,13 @@ PY
   output {
     File html_report = "rMAP_Candida_report.html"
     File summary_tsv = "rMAP-Myc-Candida-Candida_summary.tsv"
+    File surveillance_summary_tsv = "rMAP_Candida_surveillance_summary.tsv"
+    File pairwise_snp_distances_tsv = "rMAP_Candida_pairwise_snp_distances.tsv"
   }
 
   runtime {
     docker: "python:3.11-slim"
     cpu: 1
-    memory: "4 GB"
   }
 }
 
