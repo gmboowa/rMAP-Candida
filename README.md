@@ -710,7 +710,145 @@ find cromwell-executions/rMAP_Candida \
   \( -name "*.treefile" -o -name "*.nwk" -o -name "*tree*.png" -o -name "*snp*distance*.tsv" \) \
   -print
 ```
+---
+## Running rMAP-Candida Locally with Controlled Cromwell Shards
 
+When running `rMAP-Candida` locally on a laptop or workstation, it is useful to limit the number of Cromwell jobs/shards running at the same time. This prevents too many Docker containers from running in parallel & reduces the risk of memory pressure, hanging tasks, or system slowdowns.
+
+This workflow has been tested locally with Cromwell 92 using a reusable local backend configuration that limits concurrent jobs while allowing input files from any location under the user home directory.
+
+### 1. Create a reusable Cromwell local configuration
+
+Create a file called:
+
+```bash
+~/cromwell.local.reusable.shard2.no_memory_attr.conf
+
+```
+```bash
+include required(classpath("application"))
+
+system {
+  max-concurrent-workflows = 1
+}
+
+backend {
+  default = "Local"
+
+  providers {
+    Local {
+      actor-factory = "cromwell.backend.impl.sfs.config.ConfigBackendLifecycleActorFactory"
+
+      config {
+        # Controls the maximum number of Cromwell jobs/shards
+        # running at the same time.
+        concurrent-job-limit = 2
+
+        runtime-attributes = """
+        String? docker
+        String? docker_user
+        String? dockerWorkingDir
+        Int cpu = 1
+        Float memory_gb = 4
+        String? disks
+        """
+
+        submit = """
+        /bin/bash ${script}
+        """
+
+        submit-docker = """
+        docker run --rm \
+          -v ${cwd}:${docker_cwd} \
+          -v /Users/gerald:/Users/gerald \
+          -w ${docker_cwd} \
+          ${docker} \
+          /bin/bash ${script}
+        """
+      }
+    }
+  }
+}
+```
+---
+2. Why this configuration is useful
+
+The key line is:
+
+```bash
+
+concurrent-job-limit = 2
+```
+This limits Cromwell to running only two jobs or shards at the same time. For example, if the workflow scatters over many samples, Cromwell will queue the remaining jobs and only execute two concurrently.
+
+For very memory-limited runs, this can be reduced to:
+```bash
+concurrent-job-limit = 1
+```
+For larger machines, it can be increased, for example:
+```bash
+concurrent-job-limit = 3
+```
+
+or:
+
+```bash
+concurrent-job-limit = 4
+```
+
+3. Why the Docker mount is reusable
+
+The Docker configuration uses:
+
+-v /Users/gerald:/Users/gerald
+
+This makes the configuration reusable across different projects, because any input files stored under the user home directory are visible inside Docker containers.
+
+For example, the following paths will all be accessible:
+
+~/Desktop/
+~/Documents/
+~/Downloads/
+
+This avoids hard-coding project-specific folders such as:
+
+~/folder1
+~/folder2
+
+4. Important note about the memory runtime attribute
+
+For local Cromwell execution with this Docker configuration, the WDL should not include unresolved runtime declarations such as:
+
+memory: memory
+
+or:
+
+memory: "~{memory_gb} GB"
+
+if these values are not explicitly declared and passed correctly in each task.
+
+Otherwise, Cromwell may fail during initialization with an error such as:
+
+Task FASTQC has an invalid runtime attribute memory = !! NOT FOUND !!
+
+For the local reusable configuration above, the runtime memory attribute is intentionally omitted from the backend configuration. Resource control is mainly handled by limiting parallel jobs using:
+
+```bash
+concurrent-job-limit = 2
+```
+
+5. Example command
+
+Run the workflow using the Cromwell configuration file with -Dconfig.file before -jar:
+
+```bash
+java \
+  -Dconfig.file=~/cromwell.local.reusable.shard2.no_memory_attr.conf \
+  -jar ~/cromwell-92.jar \
+  run ~/rMAP_Candida.no_runtime_memory.wdl \
+  --inputs ~/rMAP-Candida.inputs_samples.json \
+  --options ~/cromwell.options.no_docker_hash_lookup.json
+```
 ---
 
 ## Troubleshooting
