@@ -548,6 +548,51 @@
             </span>
           </div>
         </a>
+
+        <!-- Ugandan validation dataset -->
+        <a
+          class="card"
+          href="./reports/Ugandan_dataset/report.html"
+          data-name="rMAP-Candida Ugandan dataset Uganda clinical Candida isolates surveillance AMR phylogenomics"
+        >
+          <div class="icon" aria-hidden="true">
+            <img
+              id="candida-img-ugandan"
+              src="assets/Candida_albicans.png"
+              alt="Candida species image"
+              loading="lazy"
+            >
+          </div>
+
+          <div class="title">
+            Candida — Ugandan_dataset
+          </div>
+
+          <p class="desc">
+            Integrated rMAP-Candida report for the Ugandan clinical
+            surveillance dataset, including species typing, assembly
+            assessment, antifungal-resistance marker screening &
+            species-aware phylogenomics.
+          </p>
+
+          <div class="chips">
+            <span class="chip chip-species">
+              Ugandan dataset
+            </span>
+
+            <span class="chip chip-hit">
+              AMR screening
+            </span>
+
+            <span class="chip">
+              Species typing
+            </span>
+
+            <span class="chip">
+              Phylogenomics
+            </span>
+          </div>
+        </a>
       </div>
 
 
@@ -639,6 +684,12 @@
 
     setupFallback(
       'candida-img-small',
+      candidaImageCandidates,
+      candidaFallbackSvg
+    );
+
+    setupFallback(
+      'candida-img-ugandan',
       candidaImageCandidates,
       candidaFallbackSvg
     );
