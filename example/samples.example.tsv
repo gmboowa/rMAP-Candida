@@ -1,0 +1,5 @@
+sample_idread1read2
+Candida_albicans_sample_01gs://YOUR_BUCKET/example/Candida_albicans_sample_01_R1.fastq.gzgs://YOUR_BUCKET/example/Candida_albicans_sample_01_R2.fastq.gz
+Candida_albicans_sample_02gs://YOUR_BUCKET/example/Candida_albicans_sample_02_R1.fastq.gzgs://YOUR_BUCKET/example/Candida_albicans_sample_02_R2.fastq.gz
+Candida_albicans_sample_03gs://YOUR_BUCKET/example/Candida_albicans_sample_03_R1.fastq.gzgs://YOUR_BUCKET/example/Candida_albicans_sample_03_R2.fastq.gz
+Candida_albicans_sample_04gs://YOUR_BUCKET/example/Candida_albicans_sample_04_R1.fastq.gzgs://YOUR_BUCKET/example/Candida_albicans_sample_04_R2.fastq.gz
