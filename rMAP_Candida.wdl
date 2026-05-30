@@ -68,6 +68,7 @@ workflow rMAP_Candida {
 
     Int max_cpus = 8
     Int max_memory_gb = 32
+    Int max_disk_gb = 1000
     Int min_read_length = 50
     Int bracken_read_length = 150
     String compleasm_lineage = "saccharomycetes"
@@ -105,8 +106,9 @@ workflow rMAP_Candida {
           read2 = read2s[i],
           min_read_length = min_read_length,
           docker_image = fastp_docker,
-          cpu = cpu_4,
-          memory_gb = max_memory_gb
+          cpu = max_cpus,
+          memory_gb = max_memory_gb,
+          disk_gb = max_disk_gb
       }
     }
 
@@ -120,8 +122,9 @@ workflow rMAP_Candida {
           read1 = analysis_read1,
           read2 = analysis_read2,
           docker_image = fastqc_docker,
-          cpu = cpu_4,
-          memory_gb = max_memory_gb
+          cpu = max_cpus,
+          memory_gb = max_memory_gb,
+          disk_gb = max_disk_gb
       }
     }
 
@@ -135,8 +138,9 @@ workflow rMAP_Candida {
           bracken_read_length = bracken_read_length,
           bracken_level = bracken_level,
           docker_image = fungal_kraken2_bracken_docker,
-          cpu = cpu_8,
-          memory_gb = max_memory_gb
+          cpu = max_cpus,
+          memory_gb = max_memory_gb,
+          disk_gb = max_disk_gb
       }
     }
 
@@ -147,8 +151,9 @@ workflow rMAP_Candida {
           read1 = analysis_read1,
           read2 = analysis_read2,
           docker_image = megahit_docker,
-          cpu = cpu_8,
-          memory_gb = max_memory_gb
+          cpu = max_cpus,
+          memory_gb = max_memory_gb,
+          disk_gb = max_disk_gb
       }
     }
   }
@@ -174,8 +179,9 @@ workflow rMAP_Candida {
             sample_name = sample_names[q],
             contigs = assembled_contigs[q],
             docker_image = quast_docker,
-            cpu = cpu_4,
-            memory_gb = max_memory_gb
+            cpu = max_cpus,
+            memory_gb = max_memory_gb,
+            disk_gb = max_disk_gb
         }
       }
     }
@@ -188,8 +194,9 @@ workflow rMAP_Candida {
             assembly_fasta = assembled_contigs[b],
             busco_lineage = busco_lineage,
             busco_docker = busco_docker,
-            cpu = cpu_8,
-            memory_gb = max_memory_gb
+            cpu = max_cpus,
+            memory_gb = max_memory_gb,
+            disk_gb = max_disk_gb
         }
       }
     }
@@ -203,8 +210,9 @@ workflow rMAP_Candida {
             compleasm_lineage = compleasm_lineage,
             compleasm_odb = compleasm_odb,
             compleasm_docker = compleasm_docker,
-            cpu = cpu_8,
-            memory_gb = max_memory_gb
+            cpu = max_cpus,
+            memory_gb = max_memory_gb,
+            disk_gb = max_disk_gb
         }
       }
     }
@@ -219,7 +227,9 @@ workflow rMAP_Candida {
             assembly_fasta = assembled_contigs[a],
             species_summary_tsv = species_summary_files_for_amr[a],
             fungal_amr_docker_image = fungamr_docker,
-            threads = cpu_4
+            threads = max_cpus,
+            memory_gb = max_memory_gb,
+            disk_gb = max_disk_gb
         }
       }
     }
@@ -235,6 +245,8 @@ workflow rMAP_Candida {
   # each species to be included. rc170 uses the rMAP-TB style Snippy/snippy-core
   # branch for species listed in snippy_phylogeny_species, now including Candida albicans
   # by default. Other species still have the bcftools consensus fallback.
+  # rc172 patch: invalid/unclassified groups such as NA, Unknown, Unclassified,
+  # and No_call are skipped before phylogeny; valid species groups continue.
   # Recombinant regions are not explicitly filtered in this implementation; resulting
   # trees should be interpreted as broad genomic relatedness/lineage structure rather than
   # definitive transmission inference.
@@ -243,7 +255,10 @@ workflow rMAP_Candida {
     call CANDIDA_EXPORT_REFERENCE_FASTAS {
       input:
         refs_manifest = candida_refs_manifest,
-        docker_image = candida_refs_docker
+        docker_image = candida_refs_docker,
+        cpu = max_cpus,
+        memory_gb = max_memory_gb,
+        disk_gb = max_disk_gb
     }
 
     call CANDIDA_SNIPPY_CORE_BY_SPECIES {
@@ -256,8 +271,9 @@ workflow rMAP_Candida {
         reference_fastas = CANDIDA_EXPORT_REFERENCE_FASTAS.reference_fastas,
         min_species_samples_for_tree = min_species_samples_for_tree,
         docker_image = snippy_docker,
-        cpu = cpu_8,
+        cpu = max_cpus,
         memory_gb = max_memory_gb,
+        disk_gb = max_disk_gb,
         min_quality = min_mapping_quality,
         min_base_quality = min_base_quality_for_phylogeny,
         min_depth = min_depth_for_phylogeny,
@@ -277,8 +293,9 @@ workflow rMAP_Candida {
           model = iqtree2_model,
           bootstrap_replicates = iqtree2_bootstraps,
           docker_image = iqtree2_docker,
-          cpu = cpu_8,
-          memory_gb = max_memory_gb
+          cpu = max_cpus,
+          memory_gb = max_memory_gb,
+          disk_gb = max_disk_gb
       }
 
       if (render_phylogeny_tree) {
@@ -289,7 +306,10 @@ workflow rMAP_Candida {
             docker_image = tree_visualization_docker,
             width = 2600,
             height = 1800,
-            image_format = "png"
+            image_format = "png",
+            cpu = max_cpus,
+            memory_gb = max_memory_gb,
+            disk_gb = max_disk_gb
         }
       }
     }
@@ -301,7 +321,10 @@ workflow rMAP_Candida {
         fastqc_reports = flatten(select_all(QC.fastqc_reports)),
         trimming_json = select_all(TRIM.fastp_json),
         trimming_html = select_all(TRIM.fastp_html),
-        docker_image = multiqc_docker
+        docker_image = multiqc_docker,
+        cpu = max_cpus,
+        memory_gb = max_memory_gb,
+        disk_gb = max_disk_gb
     }
   }
 
@@ -326,7 +349,10 @@ workflow rMAP_Candida {
       phylogeny_newick_trees = select_first([CANDIDA_IQTREE.final_tree, []]),
       phylogeny_iqtree_reports = select_first([CANDIDA_IQTREE.iqtree_report, []]),
       phylogeny_tree_images = select_all(select_first([CANDIDA_TREE.tree_image, []])),
-      surveillance_metadata_tsv = surveillance_metadata_tsv
+      surveillance_metadata_tsv = surveillance_metadata_tsv,
+      cpu = max_cpus,
+      memory_gb = max_memory_gb,
+      disk_gb = max_disk_gb
   }
 
   output {
@@ -357,6 +383,7 @@ task FASTP_TRIMMING {
     String docker_image
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -383,6 +410,8 @@ task FASTP_TRIMMING {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -394,6 +423,7 @@ task FASTQC {
     String docker_image
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -410,6 +440,8 @@ task FASTQC {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -419,6 +451,9 @@ task MULTIQC_REPORT {
     Array[File] trimming_json
     Array[File] trimming_html
     String docker_image
+    Int cpu
+    Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -435,7 +470,9 @@ task MULTIQC_REPORT {
 
   runtime {
     docker: "~{docker_image}"
-    cpu: 2
+    cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -450,6 +487,7 @@ task FUNGAL_SPECIES_TYPING {
     String docker_image
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -619,6 +657,8 @@ PY
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -631,6 +671,7 @@ task FUNGAL_ASSEMBLY {
     String docker_image
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -716,6 +757,8 @@ task FUNGAL_ASSEMBLY {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
     continueOnReturnCode: [0, 141]
   }
 }
@@ -727,6 +770,7 @@ task ASSEMBLY_QC {
     String docker_image
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -787,6 +831,8 @@ task ASSEMBLY_QC {
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -798,6 +844,7 @@ task BUSCO_FUNGAL {
     String busco_lineage
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -1028,6 +1075,8 @@ PYBUSCO
   runtime {
     docker: "~{busco_docker}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -1040,6 +1089,8 @@ task FUNGAL_AMR_CHARACTERIZATION {
     File species_summary_tsv
     String fungal_amr_docker_image
     Int threads = 4
+    Int memory_gb = 32
+    Int disk_gb = 1000
   }
 
   command <<<
@@ -1596,6 +1647,8 @@ EOF_AMR_HTML
   runtime {
     docker: "~{fungal_amr_docker_image}"
     cpu: threads
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
     continueOnReturnCode: [0]
   }
 }
@@ -1606,6 +1659,9 @@ task CANDIDA_EXPORT_REFERENCE_FASTAS {
   input {
     String refs_manifest = "/opt/rmap_candida_refs/references.tsv"
     String docker_image = "gmboowa/rmap-candida-refs:2026.05"
+    Int cpu = 1
+    Int memory_gb = 32
+    Int disk_gb = 1000
   }
 
   command <<<
@@ -1675,7 +1731,9 @@ PY
 
   runtime {
     docker: "~{docker_image}"
-    cpu: 1
+    cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -1687,32 +1745,40 @@ task CANDIDA_TREE_VISUALIZATION {
     Int width = 2600
     Int height = 1600
     String image_format = "png"
+    Int cpu = 2
+    Int memory_gb = 32
+    Int disk_gb = 1000
   }
 
   command <<<
-    set -uo pipefail
+    set -euo pipefail
     mkdir -p tree_visualization
     cp "~{input_tree}" tree_visualization/input.treefile
     export QT_QPA_PLATFORM=offscreen
     export MPLBACKEND=Agg
 
-    cat > tree_visualization/render_tree.py <<'PY'
+    cat > tree_visualization/render_tree.py <<'PY_RENDER'
 from pathlib import Path
-import re, html, traceback
+import re, traceback, zlib, struct, math
 
 outdir = Path("tree_visualization")
 outdir.mkdir(exist_ok=True)
-
 species_label = '~{species_label}'.strip() or "Candida species"
-image_format = '~{image_format}'.strip().lower()
-if image_format not in {"png", "svg", "pdf"}:
-    image_format = "png"
-
 slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", species_label).strip("_") or "Candida_species"
 tree_path = Path("tree_visualization/input.treefile")
-out_img = outdir / f"{slug}.core_snp_tree.{image_format}"
+out_img = outdir / f"{slug}.core_snp_tree.png"
 cleaned_tree = outdir / f"{slug}.core_snp_tree.cleaned.nwk"
 render_log = outdir / f"{slug}.tree_render.log"
+requested_w = int('~{width}')
+requested_h = int('~{height}')
+
+newick_text = tree_path.read_text(errors="replace").strip() if tree_path.exists() else ""
+has_internal_support_labels = bool(re.search(r"\)([0-9]+(?:\.[0-9]+)?(?:/[0-9]+(?:\.[0-9]+)?)?)(?=[:),;])", newick_text))
+
+species_parts = species_label.split()
+species_genus = species_parts[0] if len(species_parts) >= 1 else "Candida"
+species_epithet = " ".join(species_parts[1:]) if len(species_parts) >= 2 else "species"
+
 
 def clean_leaf_name(name):
     s = str(name).strip().strip("'\"")
@@ -1722,226 +1788,307 @@ def clean_leaf_name(name):
     s = re.sub(r"(\.sorted)?\.bam$", "", s, flags=re.I)
     s = re.sub(r"\.(fastq|fq)(\.gz)?$", "", s, flags=re.I)
     s = re.sub(r"\.(vcf|bcf)(\.gz)?$", "", s, flags=re.I)
-    s = re.sub(r"\.(consensus|fa|fasta|fna|aln)$", "", s, flags=re.I)
+    s = re.sub(r"\.(consensus|fa|fasta|fna|aln|treefile|nwk)$", "", s, flags=re.I)
     s = re.sub(r"_R?[12](_001)?$", "", s, flags=re.I)
-    s = re.sub(r"[\s]+", "_", s)
-    return s
+    return re.sub(r"[\s]+", "_", s) or "sample"
+
 
 def is_reference_tip(name):
     raw = str(name).strip().strip("'\"")
-    cleaned = clean_leaf_name(raw)
-    low = cleaned.lower()
+    clean = clean_leaf_name(raw).lower()
     raw_low = raw.lower()
-    if low in {"ref", "reference", "reference_genome", "outgroup"}:
-        return True
-    if raw_low in {"ref", "reference", "reference_genome", "outgroup"}:
-        return True
-    if low.startswith(("gcf_", "gca_", "nc_", "nw_", "nz_", "chr", "chromosome")):
-        return True
-    if "reference" in raw_low or "reference" in low:
-        return True
-    return False
+    explicit = {"ref", "reference", "reference_genome", "reference-genome", "outgroup", "root", "reference_sequence", "reference-sequence"}
+    return clean in explicit or raw_low in explicit or clean.startswith(("reference_", "reference-", "ref_", "ref-", "outgroup_", "outgroup-"))
 
-def write_placeholder(message):
-    msg = html.escape(str(message))[:260]
-    title = html.escape(f"rMAP-Candida species-aware core-SNP phylogeny: {species_label}")
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="600" viewBox="0 0 1400 600">
-<rect width="100%" height="100%" fill="#ffffff"/>
-<rect x="45" y="45" width="1310" height="510" rx="28" fill="#f8fafc" stroke="#cbd5e1" stroke-width="3"/>
-<text x="700" y="150" text-anchor="middle" font-family="Arial" font-size="38" font-weight="700" fill="#111827">{title}</text>
-<text x="700" y="245" text-anchor="middle" font-family="Arial" font-size="24" fill="#475569">Tree image was not rendered</text>
-<text x="700" y="305" text-anchor="middle" font-family="Arial" font-size="20" fill="#b91c1c">{msg}</text>
-<text x="700" y="385" text-anchor="middle" font-family="Arial" font-size="18" fill="#64748b">Check the tree render log for details.</text>
-</svg>'''
-    placeholder_svg = outdir / f"{slug}.core_snp_tree.svg"
-    placeholder_svg.write_text(svg)
-    if image_format == "svg":
-        out_img.write_text(svg)
-    else:
-        # Write a valid PNG even when rendering fails, so HTML never shows a broken-image icon.
-        # This is a simple white 1x1 PNG; the detailed failure message is retained in the SVG/log.
-        import base64
-        png_1x1 = (
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
-        )
-        out_img.write_bytes(base64.b64decode(png_1x1))
-    cleaned_tree.write_text(";\n")
-    render_log.write_text(str(message) + "\n")
 
-try:
-    from ete3 import Tree, TreeStyle, NodeStyle, TextFace
+def write_log(lines):
+    with open(render_log, "w") as log:
+        for x in lines:
+            log.write(str(x).rstrip() + "\n")
 
-    raw = tree_path.read_text().strip()
-    if not raw:
-        raise RuntimeError("Input Newick tree is empty.")
 
-    t = Tree(raw, format=1)
-    removed = []
-    seen = {}
-    for leaf in list(t.iter_leaves()):
-        original = leaf.name
-        if is_reference_tip(original):
-            removed.append(original)
-            leaf.detach()
-            continue
-        clean = clean_leaf_name(original)
-        if clean in seen:
-            seen[clean] += 1
-            clean = f"{clean}_{seen[clean]}"
-        else:
-            seen[clean] = 1
-        leaf.name = clean
-
-    if len(list(t.iter_leaves())) < 2:
-        raise RuntimeError("Fewer than two non-reference sample tips remained after cleaning.")
-
+def looks_blank_png(path, min_bytes=9000):
     try:
-        t.ladderize(direction=1)
+        data = path.read_bytes()
+        if len(data) < min_bytes:
+            return True
+        if data[:8] != b"\x89PNG\r\n\x1a\n":
+            return False
+        pos = 8
+        raw = bytearray()
+        width = height = None
+        color_type = None
+        bit_depth = None
+        while pos + 8 <= len(data):
+            ln = struct.unpack(">I", data[pos:pos+4])[0]
+            typ = data[pos+4:pos+8]
+            chunk = data[pos+8:pos+8+ln]
+            pos += 12 + ln
+            if typ == b"IHDR":
+                width, height, bit_depth, color_type = struct.unpack(">IIBB", chunk[:10])[:5]
+            elif typ == b"IDAT":
+                raw.extend(chunk)
+            elif typ == b"IEND":
+                break
+        if not raw or not width or not height:
+            return True
+        dec = zlib.decompress(bytes(raw))
+        channels = 4 if color_type == 6 else 3 if color_type == 2 else 1
+        stride = width * channels + 1
+        rows_to_check = min(height, 250)
+        sample = dec[:stride * rows_to_check]
+        # If almost all bytes are white/zero filters, image is effectively blank.
+        darkish = sum(1 for b in sample if 0 < b < 235)
+        return darkish < max(60, width * rows_to_check * channels * 0.0008)
+    except Exception:
+        return False
+
+
+def draw_fallback_png(reason):
+    """Robust non-empty fallback. This is only used if ETE/Qt fails."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        W = max(1800, requested_w)
+        H = max(1000, requested_h)
+        img = Image.new("RGB", (W, H), "white")
+        d = ImageDraw.Draw(img)
+        try:
+            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42)
+            tip_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
+            species_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf", 24)
+            note_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
+        except Exception:
+            title_font = tip_font = species_font = note_font = None
+        d.text((70, 50), f"rMAP-Candida Core-SNP Phylogenetic Tree: {species_label}", fill="black", font=title_font)
+        d.text((70, 105), f"Fallback renderer used: {reason}", fill=(120, 30, 30), font=note_font)
+        leaves = []
+        for m in re.finditer(r"([A-Za-z0-9_.:-]+)(?=:[0-9.eE+-]+)", newick_text):
+            v = clean_leaf_name(m.group(1))
+            if v and not is_reference_tip(v) and v not in leaves:
+                leaves.append(v)
+        if not leaves:
+            leaves = ["Tree file parsed but no non-reference tips were detected"]
+        top = 200
+        step = max(58, min(110, int((H - 320) / max(1, len(leaves)))))
+        trunk_x = 140
+        tip_x = 420
+        y_positions = []
+        for i, leaf in enumerate(leaves):
+            y = top + i * step
+            y_positions.append(y)
+            d.line((trunk_x, y, tip_x, y), fill="black", width=4)
+            d.ellipse((tip_x-7, y-7, tip_x+7, y+7), fill=(30, 96, 210))
+            d.text((tip_x+16, y-23), leaf, fill=(20, 34, 55), font=tip_font)
+            sample_w = d.textlength(leaf, font=tip_font) if hasattr(d, "textlength") else len(leaf) * 18
+            d.text((tip_x+35+sample_w, y-17), species_label, fill=(37, 99, 235), font=species_font)
+        if len(y_positions) > 1:
+            d.line((trunk_x, y_positions[0], trunk_x, y_positions[-1]), fill="black", width=4)
+        d.line((90, H-90, 230, H-90), fill="black", width=3)
+        d.text((90, H-75), "not to scale", fill="black", font=note_font)
+        img.save(out_img)
+    except Exception:
+        Path(out_img).write_bytes(b"fallback render failed\n")
+
+
+log_lines = []
+try:
+    if not newick_text:
+        raise RuntimeError("Tree input was empty or missing.")
+
+    from ete3 import Tree, TreeStyle, NodeStyle, TextFace
+    t = Tree(str(tree_path), format=0)
+
+    # Remove explicit reference/outgroup leaves only; keep all real samples.
+    for leaf in list(t.iter_leaves()):
+        if is_reference_tip(leaf.name):
+            leaf.detach()
+
+    for leaf in t.iter_leaves():
+        leaf.name = clean_leaf_name(leaf.name)
+
+    n_leaves = len(t.get_leaves())
+    if n_leaves < 2:
+        raise RuntimeError(f"Fewer than two non-reference tips available after cleaning: {n_leaves}")
+
+    t.write(outfile=str(cleaned_tree), format=0)
+
+    # Adaptive rendering:
+    #   Small species trees (3-5 tips) should not be drawn on a very large canvas.
+    #   Larger species trees keep the wider/taller layout needed for readability.
+    if n_leaves <= 5:
+        layout_class = "compact"
+        canvas_w = min(max(requested_w, 1400), 1800)
+        canvas_h = 820
+        font_size = 24
+        title_font_size = 28
+        species_font_size = 16
+        support_font_size = 15
+        dot_size = 8
+        line_width = 3
+        margin_left = 65
+        margin_right = 360
+        margin_top = 45
+        margin_bottom = 65
+        branch_vertical_margin = 16
+    elif n_leaves <= 12:
+        layout_class = "medium"
+        canvas_w = min(max(requested_w, 1800), 2200)
+        canvas_h = max(950, 520 + 70 * n_leaves)
+        font_size = 26
+        title_font_size = 32
+        species_font_size = 18
+        support_font_size = 16
+        dot_size = 9
+        line_width = 3
+        margin_left = 65
+        margin_right = 470
+        margin_top = 60
+        margin_bottom = 80
+        branch_vertical_margin = 14
+    elif n_leaves <= 30:
+        layout_class = "standard"
+        canvas_w = max(requested_w, 1850 + 55 * n_leaves)
+        canvas_h = max(requested_h, 520 + 62 * n_leaves)
+        font_size = 24
+        title_font_size = 34
+        species_font_size = 17
+        support_font_size = 16
+        dot_size = 9
+        line_width = 3
+        margin_left = 70
+        margin_right = 560
+        margin_top = 70
+        margin_bottom = 90
+        branch_vertical_margin = 10
+    else:
+        layout_class = "large"
+        canvas_w = max(requested_w, 2000 + 42 * n_leaves)
+        canvas_h = max(requested_h, 500 + 44 * n_leaves)
+        font_size = 18
+        title_font_size = 32
+        species_font_size = 14
+        support_font_size = 14
+        dot_size = 8
+        line_width = 2
+        margin_left = 70
+        margin_right = 620
+        margin_top = 70
+        margin_bottom = 90
+        branch_vertical_margin = 7
+
+    for n in t.traverse():
+        ns = NodeStyle()
+        ns["fgcolor"] = "#2563eb" if n.is_leaf() else "#111827"
+        ns["size"] = dot_size if n.is_leaf() else 0
+        ns["hz_line_width"] = line_width
+        ns["vt_line_width"] = line_width
+        n.set_style(ns)
+
+    def format_support_label(node):
+        """Show IQ-TREE/UFBoot/bootstrap labels on internal branches.
+        ETE may store branch supports in node.support rather than node.name; use both.
+        Avoid displaying ETE's artificial default support=1.0 unless the Newick actually contained support labels.
+        """
+        if node.is_leaf():
+            return ""
+        candidates = []
+        nm = str(getattr(node, "name", "") or "").strip()
+        if nm and nm not in {"NoName", "None"}:
+            candidates.append(nm)
+        sup = getattr(node, "support", None)
+        if sup is not None and has_internal_support_labels:
+            try:
+                val = float(sup)
+                if val > 0:
+                    if 0 < val <= 1.0:
+                        val = val * 100.0
+                    candidates.append(str(val))
+            except Exception:
+                pass
+        for c in candidates:
+            c = str(c).strip()
+            if not c or c in {"1", "1.0", "0", "0.0"} and not has_internal_support_labels:
+                continue
+            if "/" in c:
+                return c
+            try:
+                v = float(c)
+                if 0 < v <= 1.0:
+                    v *= 100.0
+                if v < 1.0:
+                    return ""
+                return str(int(round(v))) if abs(v - round(v)) < 0.05 else f"{v:.1f}"
+            except Exception:
+                return c
+        return ""
+
+    def layout(node):
+        if node.is_leaf():
+            sample_face = TextFace(node.name, fsize=font_size, fgcolor="#111827")
+            sample_face.margin_left = 8
+            sample_face.margin_right = 12
+            node.add_face(sample_face, column=0, position="branch-right")
+            sp_face = TextFace(species_label, fsize=species_font_size, fgcolor="#2563eb")
+            # Italicize species names; this works in ETE3 with Qt fonts.
+            try:
+                sp_face.fstyle = "italic"
+            except Exception:
+                pass
+            sp_face.margin_left = 4
+            node.add_face(sp_face, column=1, position="branch-right")
+        else:
+            lab = format_support_label(node)
+            if lab:
+                boot = TextFace(lab, fsize=support_font_size, fgcolor="#dc2626")
+                boot.margin_right = 6
+                boot.margin_left = 2
+                node.add_face(boot, column=0, position="branch-top")
+
+    ts = TreeStyle()
+    ts.mode = "r"
+    ts.show_leaf_name = False
+    ts.show_branch_support = False
+    ts.show_branch_length = False
+    ts.layout_fn = layout
+    ts.margin_left = margin_left
+    ts.margin_right = margin_right
+    ts.margin_top = margin_top
+    ts.margin_bottom = margin_bottom
+    ts.branch_vertical_margin = branch_vertical_margin
+    ts.scale = None
+    title_face = TextFace(f"rMAP-Candida Core-SNP Phylogenetic Tree: {species_label}", fsize=title_font_size, fgcolor="#000000")
+    title_face.margin_bottom = 12 if n_leaves <= 5 else 18
+    ts.title.add_face(title_face, column=0)
+    try:
+        ts.show_scale = True
     except Exception:
         pass
 
-    t.write(outfile=str(cleaned_tree), format=1)
+    t.render(str(out_img), w=canvas_w, h=canvas_h, units="px", tree_style=ts)
+    if looks_blank_png(out_img):
+        log_lines.append(f"ETE output appeared blank or too small ({out_img.stat().st_size if out_img.exists() else 0} bytes); using fallback renderer.")
+        draw_fallback_png("ETE produced a blank/too-small PNG")
 
-    n_leaves = len(list(t.iter_leaves()))
-
-    # rMAP-TB-style adaptive rendering: width-only render, compact title, no forced tall canvas.
-    if n_leaves <= 5:
-        auto_width = max(int('~{width}'), 3800)
-        leaf_fsize = 14
-        species_fsize = 11
-        support_fsize = 10
-        tip_node_size = 8
-        line_width = 2
-        branch_vertical_margin = 18
-        margin_right = 1500
-    elif n_leaves <= 10:
-        auto_width = max(int('~{width}'), 4200)
-        leaf_fsize = 13
-        species_fsize = 10
-        support_fsize = 9
-        tip_node_size = 7
-        line_width = 2
-        branch_vertical_margin = 14
-        margin_right = 1600
-    elif n_leaves <= 25:
-        auto_width = max(int('~{width}'), 5000)
-        leaf_fsize = 11
-        species_fsize = 9
-        support_fsize = 8
-        tip_node_size = 6
-        line_width = 2
-        branch_vertical_margin = 8
-        margin_right = 1700
-    elif n_leaves <= 50:
-        auto_width = max(int('~{width}'), 5600)
-        leaf_fsize = 9
-        species_fsize = 8
-        support_fsize = 7
-        tip_node_size = 5
-        line_width = 1
-        branch_vertical_margin = 5
-        margin_right = 1800
-    elif n_leaves <= 100:
-        auto_width = max(int('~{width}'), 6400)
-        leaf_fsize = 8
-        species_fsize = 7
-        support_fsize = 6
-        tip_node_size = 4
-        line_width = 1
-        branch_vertical_margin = 3
-        margin_right = 1900
-    else:
-        auto_width = max(int('~{width}'), 7200)
-        leaf_fsize = 7
-        species_fsize = 6
-        support_fsize = 5
-        tip_node_size = 3
-        line_width = 1
-        branch_vertical_margin = 2
-        margin_right = 2000
-
-    for node in t.traverse():
-        ns = NodeStyle()
-        ns["hz_line_width"] = line_width
-        ns["vt_line_width"] = line_width
-        ns["size"] = 0
-        if node.is_leaf():
-            ns["size"] = tip_node_size
-            ns["fgcolor"] = "#0f3b8f"
-            node.set_style(ns)
-            sample_name = node.name
-            node.name = ""
-            node.add_face(TextFace(sample_name, fsize=leaf_fsize, fgcolor="#111827"), column=0, position="branch-right")
-            node.add_face(TextFace(f"  {species_label}", fsize=species_fsize, fgcolor="#2563eb"), column=1, position="branch-right")
-        else:
-            node.set_style(ns)
-            label = str(node.name).strip()
-            # IQ-TREE support values may be parsed either as internal node names
-            # or as node.support depending on Newick format. Prefer the original
-            # internal label; fall back to node.support only when it is informative.
-            if not label:
-                try:
-                    supp = float(getattr(node, "support", 0.0))
-                    if supp > 1.0001:
-                        label = str(int(round(supp))) if abs(supp - round(supp)) < 0.01 else f"{supp:.1f}"
-                    elif 0.0 < supp < 1.0:
-                        label = str(int(round(supp * 100)))
-                except Exception:
-                    label = ""
-            if label and label not in {"0", "1", "1.0", "100.0"}:
-                node.add_face(TextFace(label, fsize=support_fsize, fgcolor="#dc2626"), column=0, position="branch-top")
-
-    ts = TreeStyle()
-    ts.show_leaf_name = False
-    ts.show_branch_support = False
-    ts.show_scale = True
-    ts.mode = "r"
-    ts.scale = 120
-    ts.branch_vertical_margin = branch_vertical_margin
-    ts.margin_top = 20
-    ts.margin_bottom = 20
-    ts.margin_left = 20
-    ts.margin_right = margin_right
-
-    title_face = TextFace(f"rMAP-Candida Core-SNP Phylogenetic Tree: {species_label}", fsize=18, fgcolor="#000000", bold=True)
-    ts.title.add_face(title_face, column=0)
-
-    t.render(str(out_img), tree_style=ts, w=auto_width, units="px")
-
-    with open(render_log, "w") as log:
-        log.write("rMAP-Candida tree visualization rendered successfully.\n")
-        log.write(f"Species: {species_label}\n")
-        log.write(f"Input tree: {tree_path}\n")
-        log.write(f"Output image: {out_img}\n")
-        log.write(f"Cleaned Newick: {cleaned_tree}\n")
-        log.write(f"Tips rendered: {n_leaves}\n")
-        log.write("Removed reference/outgroup tips: " + (", ".join(removed) if removed else "none") + "\n")
-        log.write(f"Auto width: {auto_width}px\n")
-        log.write("Sample labels were cleaned to remove snippy_/core_ prefixes and file suffixes.\n")
-        log.write("Tree rendered with rMAP-TB-style adaptive width-only ETE3 layout.\n")
-
+    log_lines += [
+        "Tree rendering completed.",
+        f"species_label={species_label}",
+        f"tips_rendered={n_leaves}",
+        f"layout_class={layout_class}",
+        f"has_internal_support_labels={has_internal_support_labels}",
+        f"canvas={canvas_w}x{canvas_h}",
+        f"output={out_img}",
+        f"output_bytes={out_img.stat().st_size if out_img.exists() else 0}",
+    ]
 except Exception as e:
-    write_placeholder("Tree rendering failed: " + str(e))
-    with open(render_log, "a") as log:
-        log.write("\nTRACEBACK:\n")
-        log.write(traceback.format_exc())
-PY
+    log_lines.append("Primary tree rendering failed; writing non-empty fallback PNG.")
+    log_lines.append(str(e))
+    log_lines.append(traceback.format_exc())
+    draw_fallback_png(str(e))
 
-    if command -v docker >/dev/null 2>&1; then
-      # Some renderer images define python3 as ENTRYPOINT. Override it so the
-      # command is interpreted exactly once inside the container.
-      docker run --rm \
-        --entrypoint /bin/bash \
-        -v "$PWD:$PWD" \
-        -w "$PWD" \
-        -e QT_QPA_PLATFORM=offscreen \
-        -e MPLBACKEND=Agg \
-        "~{docker_image}" \
-        -lc 'python3 tree_visualization/render_tree.py'
-    else
-      python3 tree_visualization/render_tree.py
-    fi
+write_log(log_lines)
+PY_RENDER
 
+    python3 tree_visualization/render_tree.py
   >>>
 
   output {
@@ -1951,9 +2098,10 @@ PY
   }
 
   runtime {
-    # Docker is invoked manually inside the command for this task to avoid
-    # Cromwell local-backend Containers-to-String docker coercion failures.
-    cpu: 2
+    docker: "~{docker_image}"
+    cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -1968,7 +2116,7 @@ task CANDIDA_SNIPPY_CORE_BY_SPECIES {
 
     # True Snippy branch species. Default is C. auris because it is relatively clonal
     # and Snippy/snippy-core is widely used for C. auris short-read WGS comparisons.
-    Array[String] snippy_species = ["Candidozyma auris"]
+    Array[String] snippy_species = ["Candida auris", "Candidozyma auris", "Candida albicans", "Candida tropicalis"]
 
     # Non-Snippy species in this list use bcftools --ploidy 1.
     # All other non-Snippy species use diploid-aware bcftools --ploidy 2.
@@ -1978,6 +2126,7 @@ task CANDIDA_SNIPPY_CORE_BY_SPECIES {
     String docker_image = "staphb/snippy:4.6.0"
     Int cpu = 8
     Int memory_gb = 32
+    Int disk_gb = 1000
     Int min_quality = 20
     Int min_base_quality = 20
     Int min_depth = 10
@@ -2010,8 +2159,18 @@ min_depth = int("~{min_depth}")
 min_vqual = int("~{min_variant_quality}")
 core_fraction = float("~{core_site_min_fraction}")
 
+def canonical_species_name(x):
+    s = str(x or '').strip()
+    k = re.sub(r'[^a-z0-9]+', ' ', s.lower()).strip()
+    # NCBI/Kraken may report C. auris as Candidozyma auris, while older
+    # references and reports may use Candida auris. Treat them as the same
+    # species for reference lookup, Snippy routing, and report grouping.
+    if k in {'candidozyma auris', 'candida auris'}:
+        return 'Candida auris'
+    return s
+
 def norm(x):
-    return re.sub(r'\s+', ' ', str(x).strip()).lower()
+    return re.sub(r'\s+', ' ', canonical_species_name(x)).lower()
 
 def slug(x):
     s = re.sub(r'[^A-Za-z0-9_.-]+', '_', str(x).strip())
@@ -2112,37 +2271,60 @@ def clean_alignment_sample_name(name):
     return s
 
 def is_reference_alignment_name(name):
+    # Conservative reference detection only.
+    # Do NOT remove GCA/GCF/NC/NZ-like names here because user sample IDs may legally
+    # look like accessions. Reference removal is instead driven by the expected
+    # successful sample names whenever those are available.
     raw = str(name).strip().strip("'\"")
     clean = clean_alignment_sample_name(raw)
     low = clean.lower()
     raw_low = raw.lower()
-    if low in {"ref", "reference", "reference_genome", "outgroup"}:
-        return True
-    if raw_low in {"ref", "reference", "reference_genome", "outgroup"}:
-        return True
-    if low.startswith(("gcf_", "gca_", "nc_", "nw_", "nz_", "chr", "chromosome")):
+    exact_reference_names = {
+        "ref", "reference", "reference_genome", "outgroup",
+        "core_ref", "core_reference", "snippy_ref", "snippy_reference"
+    }
+    if low in exact_reference_names or raw_low in exact_reference_names:
         return True
     if "reference" in raw_low or "reference" in low:
         return True
     return False
 
-def strip_reference_from_alignment(infile, outfile):
+def strip_reference_from_alignment(infile, outfile, expected_samples=None):
     seqs = read_fasta(infile)
+    expected = set(clean_alignment_sample_name(x) for x in (expected_samples or []) if str(x).strip())
     kept = []
     seen = {}
+
     for name, seq in seqs.items():
-        if is_reference_alignment_name(name):
-            continue
         clean = clean_alignment_sample_name(name)
+
+        # Preferred behavior: keep only sequences corresponding to successful
+        # input sample IDs. This preserves arbitrary sample names such as SRR*,
+        # ERR*, sample-001, patient_A, GCA/GCF-like sample names, etc., and drops
+        # the reference without relying on accession-pattern guessing.
+        if expected:
+            if clean not in expected:
+                continue
+        else:
+            if is_reference_alignment_name(name):
+                continue
+
         if clean in seen:
             seen[clean] += 1
             clean = f"{clean}_{seen[clean]}"
         else:
             seen[clean] = 1
         kept.append((clean, seq))
+
+    # Defensive fallback: if name matching unexpectedly removes everything, fall
+    # back to conservative reference-name filtering rather than failing silently.
     if not kept:
         for name, seq in seqs.items():
-            kept.append((clean_alignment_sample_name(name), seq))
+            if is_reference_alignment_name(name):
+                continue
+            clean = clean_alignment_sample_name(name)
+            kept.append((clean, seq))
+
     write_fasta(kept, outfile)
     return len(kept), len(kept[0][1]) if kept else 0
 
@@ -2150,15 +2332,53 @@ refs = {norm(sp): (sp.strip(), rf.strip()) for sp, rf in zip(ref_species, ref_fi
 snippy_set = set(norm(x) for x in snippy_species if x.strip())
 haploid_set = set(norm(x) for x in haploid_species if x.strip())
 
-groups = {}
-for sample, r1, r2, stsv in zip(samples, r1s, r2s, species_tsvs):
-    sp = read_top_species(stsv)
-    groups.setdefault(norm(sp), {"display": sp, "items": []})
-    groups[norm(sp)]["items"].append((sample, r1, r2))
+# rc172 patch: build phylogenies only for valid Candida species that have
+# an explicit species-specific reference in the bundled/exported reference manifest.
+# Invalid/unclassified labels must not become phylogeny groups because they have no
+# biological reference and can trigger failed calls such as CANDIDA_SNIPPY_CORE_BY_SPECIES:NA.
+INVALID_SPECIES_LABELS = {
+    "", "na", "n/a", "nan", "none", "null", "unknown", "unclassified",
+    "no_call", "no call", "no-call", "not determined", "not_determined",
+    "undetermined", "unassigned", "unresolved", "no species", "no_species"
+}
+
+def is_invalid_species_label(sp):
+    k = norm(sp)
+    return k in INVALID_SPECIES_LABELS or k.startswith("unclassified") or k.startswith("unknown")
 
 summary_rows = []
 group_labels = []
 alignment_manifest = []
+
+groups = {}
+skipped_invalid_counts = {}
+skipped_no_reference_counts = {}
+for sample, r1, r2, stsv in zip(samples, r1s, r2s, species_tsvs):
+    sp = read_top_species(stsv)
+    key = norm(sp)
+    display = str(sp).strip() or "NA"
+
+    if is_invalid_species_label(sp):
+        skipped_invalid_counts.setdefault(display, 0)
+        skipped_invalid_counts[display] += 1
+        continue
+
+    if key not in refs:
+        # Species was detected, but it is not one of the defined Candida species
+        # with a reference FASTA available for phylogeny. Keep it in the summary,
+        # but do not run Snippy/bcftools/IQ-TREE for it.
+        skipped_no_reference_counts.setdefault(display, 0)
+        skipped_no_reference_counts[display] += 1
+        continue
+
+    groups.setdefault(key, {"display": display, "items": []})
+    groups[key]["items"].append((sample, r1, r2))
+
+for display, nskip in sorted(skipped_invalid_counts.items()):
+    summary_rows.append({"species": display, "status": "SKIPPED_INVALID_OR_UNCLASSIFIED_SPECIES", "sample_count": str(nskip), "branch": "NA", "ploidy": "NA", "reference": "NA", "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Skipped by rc172 phylogeny guard because the top species label was invalid/unclassified/unknown/NA. The workflow will continue and build trees for valid species groups only."})
+
+for display, nskip in sorted(skipped_no_reference_counts.items()):
+    summary_rows.append({"species": display, "status": "SKIPPED_SPECIES_NOT_IN_REFERENCE_MANIFEST", "sample_count": str(nskip), "branch": "NA", "ploidy": "NA", "reference": "NA", "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Skipped by rc172 phylogeny guard because this detected species is not among the defined Candida species with an exported reference FASTA. Valid species with references are still processed."})
 
 for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
     display = info["display"]
@@ -2186,7 +2406,7 @@ for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
         # C. albicans, fixing the earlier C. albicans bcftools variant_calling_failed
         # path that prevented a tree from being built.
         log = outdir / "snippy_core.log"
-        failed, snippy_dirs = [], []
+        failed, snippy_dirs, successful_samples = [], [], []
 
         snippy_bin = shutil.which("snippy") or "/usr/local/bin/snippy"
         snippy_core_bin = shutil.which("snippy-core") or "snippy-core"
@@ -2225,6 +2445,7 @@ for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
                 failed.append(sample + ":snippy_failed")
             else:
                 snippy_dirs.append(str(sdir.resolve()))
+                successful_samples.append(sample)
 
         if len(snippy_dirs) < min_n:
             summary_rows.append({"species": display, "status": "SKIPPED_TOO_FEW_SUCCESSFUL_SNIPPY_RUNS", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Fewer than the minimum number of samples completed Snippy. Failed: " + ",".join(failed)})
@@ -2240,9 +2461,9 @@ for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
 
         core_out = outdir / f"{gslug}.core_snps.aln"
         full_out = outdir / f"{gslug}.full_consensus.aln"
-        nseqs, nsites = strip_reference_from_alignment(raw_core, core_out)
+        nseqs, nsites = strip_reference_from_alignment(raw_core, core_out, expected_samples=successful_samples)
         if raw_full.exists() and raw_full.stat().st_size > 0:
-            strip_reference_from_alignment(raw_full, full_out)
+            strip_reference_from_alignment(raw_full, full_out, expected_samples=successful_samples)
         else:
             shutil.copy(core_out, full_out)
 
@@ -2334,6 +2555,8 @@ PY
   runtime {
     docker: "~{docker_image}"
     cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -2347,6 +2570,7 @@ task COMPLEASM_FUNGAL {
     String compleasm_odb
     Int cpu
     Int memory_gb
+    Int disk_gb
   }
 
   command <<<
@@ -2468,8 +2692,9 @@ PYCOMP
 
   runtime {
     docker: "~{compleasm_docker}"
-    cpu: "~{cpu}"
+    cpu: cpu
     memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -2482,6 +2707,7 @@ task CANDIDA_IQTREE2_PHYLOGENY {
     String docker_image = "gmboowa/iqtree2-python:2.3.4"
     Int cpu = 8
     Int memory_gb = 32
+    Int disk_gb = 1000
     Float max_missing_fraction_for_tree = 0.50
     Int min_non_reference_samples_for_tree = 3
   }
@@ -2792,10 +3018,10 @@ PY
   }
 
   runtime {
-    # Docker is invoked manually inside the command for this task to avoid
-    # Cromwell local-backend Containers-to-String docker coercion failures.
+    docker: "~{docker_image}"
     cpu: cpu
     memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -2822,6 +3048,9 @@ task MERGE_MYC_REPORTS {
     Array[File] phylogeny_iqtree_reports
     Array[File] phylogeny_tree_images
     File? surveillance_metadata_tsv
+    Int cpu = 1
+    Int memory_gb = 32
+    Int disk_gb = 1000
   }
 
   command <<<
@@ -3551,6 +3780,20 @@ def build_phylogeny_section():
             except Exception as exc:
                 parts.append(f'<p>Could not embed tree image {esc(img.name)}: {esc(exc)}</p>')
 
+    skipped_rows = [r for r in phylo_rows if str(r.get("status","")).upper() not in {"BUILT","TREE_READY","PASS"}]
+    if skipped_rows:
+        skipped_bits = []
+        for r in skipped_rows:
+            sp = r.get("species", "Unknown species")
+            st = r.get("status", "Not built")
+            sc = r.get("sample_count", "NA")
+            br = r.get("branch", "NA")
+            nt = r.get("notes", "")
+            skipped_bits.append(
+                f'<li><strong>{esc(sp)}</strong>: {esc(st)}; samples after species-specific consensus/eligibility = {esc(sc)}; branch = {esc(br)}; note = {esc(nt)}</li>'
+            )
+        parts.append('<div class="note"><strong>Species without a displayed tree:</strong><ul>' + ''.join(skipped_bits) + '</ul></div>')
+
     if not parts:
         return '<p>Phylogeny was not enabled or no eligible species group met the minimum sample/reference requirements.</p>'
 
@@ -3559,7 +3802,10 @@ def build_phylogeny_section():
 
 phylogeny_section = build_phylogeny_section()
 
-now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+run_dt = datetime.datetime.utcnow()
+run_generated_utc = run_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+run_stamp = run_dt.strftime("%Y%m%d_%H%M%S_UTC")
+
 
 css = """
 body{margin:0;background:#f3f6fb;color:#13242d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}
@@ -3590,8 +3836,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:12px;bord
 .bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;min-width:130px}.bar span{display:block;height:100%;background:linear-gradient(90deg,#0f766e,#2563eb)}
 .dist-row{display:grid;grid-template-columns:180px 1fr 30px;gap:12px;align-items:center;margin:12px 0}
 .note{border-left:5px solid #0f766e;background:#ecfdf5;border-radius:12px;padding:14px}
-.tree-panel{overflow:auto;border:1px solid #e5e7eb;border-radius:16px;background:#fff;padding:16px;margin:14px 0}
-.tree-img{max-width:100%;height:auto;display:block}
+.tree-panel{overflow:auto;border:1px solid #e5e7eb;border-radius:16px;background:#fff;padding:18px 22px;margin:14px 0;min-height:180px}
+.tree-panel h3{margin-top:0}.tree-img{max-width:100%;height:auto;display:block;margin:0 auto;image-rendering:auto}
 .footer{text-align:center;color:#64748b;padding:40px 0}
 @media(max-width:900px){.metrics,.sample-grid,.two{grid-template-columns:1fr}.mini-grid{grid-template-columns:repeat(2,1fr)}}
 """
@@ -3603,7 +3849,7 @@ html_doc=f"""<!DOCTYPE html>
 <div class="kicker">rMAP-Myc-Candida surveillance report</div>
 <h1>Integrated Candida fungal genomics report</h1>
 <p>This report summarizes paired-end fungal genome analysis for Candida-focused surveillance, combining read QC, Kraken2/Bracken species typing, MEGAHIT assembly, QUAST-only assembly contiguity assessment, and genomic antifungal-resistance screening.</p>
-<span class="pill">Generated {esc(now)}</span><span class="pill">Custom Candida Kraken2/Bracken DB</span><span class="pill">MEGAHIT assembly</span>
+<span class="pill">Run generated: {esc(run_generated_utc)}</span><span class="pill">Run stamp: {esc(run_stamp)}</span><span class="pill">Custom Candida Kraken2/Bracken DB</span><span class="pill">MEGAHIT assembly</span>
 </div></section>
 <div class="wrap">
 <nav class="toc"><a href="#executive">Executive summary</a><a href="#surveillance">Surveillance dashboard</a><a href="#metadata">Metadata</a><a href="#samples">Samples</a><a href="#species">Species</a><a href="#assembly">Assembly QC</a><a href="#amr">AMR</a><a href="#phylogeny">Phylogeny</a><a href="#snpdist">SNP distances</a><a href="#provenance">Outputs</a></nav>
@@ -3614,7 +3860,7 @@ html_doc=f"""<!DOCTYPE html>
 <div class="metric"><small>Median N50</small><strong>{esc(median_n50)}</strong></div>
 </section>
 <section class="card two" id="executive"><div><h2>1. Executive summary</h2>
-<p>The primary detected fungal species group was {species_badge(top_species)}. The sample-level cards below provide a compact interpretation of species assignment, species assignment, QUAST assembly-contiguity metrics, phylogeny status, and genomic AMR screening status.</p>
+<p>The primary detected fungal species group was {species_badge(top_species)}. The sample-level cards below provide a compact interpretation of species assignment, QUAST assembly-contiguity metrics, phylogeny status, and genomic AMR screening status.</p>
 <div class="note"><strong>Interpretation note:</strong> genomic antifungal-resistance findings should be treated as screening evidence. Clinically important results should be interpreted with isolate metadata, species identity, validated mutation catalogues, and phenotypic antifungal susceptibility testing where required.</div></div>
 <div><h3>Species distribution</h3>{species_dist or '<p>No species calls available.</p>'}</div></section>
 <section class="card" id="surveillance"><h2>2. Surveillance readiness and interpretation dashboard</h2><p>This integrated table combines species confidence, QUAST assembly-contiguity metrics, AMR marker status, phylogeny eligibility, and optional metadata into a practical surveillance-readiness view.</p>{surveillance_table}</section>
@@ -3643,7 +3889,9 @@ PY
 
   runtime {
     docker: "python:3.11-slim"
-    cpu: 1
+    cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 

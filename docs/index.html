@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta
     name="description"
-    content="Interactive rMAP-Candida HTML reports for Candida-spp focused fungal genome surveillance, species typing, assembly, BUSCO completeness & antifungal-resistance marker screening."
+    content="Interactive rMAP-Candida HTML reports for Candida spp.-focused fungal genome surveillance, species typing, assembly, BUSCO completeness, antifungal-resistance marker screening & phylogenetic relatedness."
   >
 
   <style>
@@ -549,6 +549,51 @@
           </div>
         </a>
 
+        <!-- Medium benchmark dataset -->
+        <a
+          class="card"
+          href="./reports/Medium_dataset/report.html"
+          data-name="rMAP-Candida medium dataset Candida species isolates AMR phylogenomics BUSCO species typing"
+        >
+          <div class="icon" aria-hidden="true">
+            <img
+              id="candida-img-medium"
+              src="assets/Candida_albicans.png"
+              alt="Candida species image"
+              loading="lazy"
+            >
+          </div>
+
+          <div class="title">
+            Candida — Medium_dataset
+          </div>
+
+          <p class="desc">
+            Integrated rMAP-Candida report for the medium benchmark
+            dataset, including species typing, assembly assessment,
+            antifungal-resistance marker screening & species-aware
+            phylogenomics.
+          </p>
+
+          <div class="chips">
+            <span class="chip chip-species">
+              Medium dataset
+            </span>
+
+            <span class="chip chip-hit">
+              AMR screening
+            </span>
+
+            <span class="chip">
+              BUSCO
+            </span>
+
+            <span class="chip">
+              Phylogenomics
+            </span>
+          </div>
+        </a>
+
         <!-- Ugandan validation dataset -->
         <a
           class="card"
@@ -684,6 +729,12 @@
 
     setupFallback(
       'candida-img-small',
+      candidaImageCandidates,
+      candidaFallbackSvg
+    );
+
+    setupFallback(
+      'candida-img-medium',
       candidaImageCandidates,
       candidaFallbackSvg
     );

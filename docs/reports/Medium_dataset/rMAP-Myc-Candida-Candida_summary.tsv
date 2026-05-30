@@ -1,0 +1,26 @@
+sample_id	species	percent_reads	contigs	n50	gc_percent	amr_hits
+ERR2300788	Candidozyma auris	99.52	670	33,153	44.95	1
+ERR2300806	Candidozyma auris	98.61	688	32,749	44.95	1
+ERR2300807	Candidozyma auris	98.97	659	34,720	44.95	1
+ERR2300808	Candidozyma auris	98.32	677	33,038	44.95	1
+ERR2300809	Candidozyma auris	98.72	695	31,632	44.93	1
+ERR2300810	Candidozyma auris	99.14	688	30,447	44.93	1
+ERR2300812	Candidozyma auris	99.57	653	32,986	44.95	1
+ERR2300813	Candidozyma auris	99.45	687	31,998	44.94	1
+ERR2300814	Candidozyma auris	99.49	655	33,916	44.96	1
+ERR263535	Candida albicans	99.44	2,777	13,483	33.86	1
+ERR3040852	Pichia kudriavzevii	34.89	5,146	54,792	49.64	0
+ERR331060	Nakaseomyces glabratus	73.73	427	67,770	38.08	0
+ERR331061	Nakaseomyces glabratus	73.69	433	71,482	38.08	0
+ERR570065	Nakaseomyces glabratus	73.63	430	68,055	38.08	0
+SRR10967506	Candida tropicalis	99.86	872	59,289	33.04	0
+SRR10967518	Candida tropicalis	99.93	815	66,770	33.03	0
+SRR11092001	Candidozyma auris	60.97	322	118,827	47.08	0
+SRR11235423	Nakaseomyces glabratus	99.99	1,264	31,653	38.83	1
+SRR11235431	Candida albicans	99.30	4,091	12,510	33.85	1
+SRR25474587	Candida parapsilosis	100.00	1,392	19,980	38.61	0
+SRR38908326	Candidozyma auris	99.37	115	209,202	45.14	1
+SRR38908330	Candidozyma auris	99.25	117	270,319	45.14	1
+SRR38908334	Candidozyma auris	99.16	146	144,269	45.15	0
+SRR6475853	Clavispora lusitaniae	55.62	54	609,454	45.52	0
+SRR6476030	Clavispora lusitaniae	54.11	161	240,220	46.15	0

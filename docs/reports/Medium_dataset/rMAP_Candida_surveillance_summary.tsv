@@ -1,0 +1,26 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+ERR2300788	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300806	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300807	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300808	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300809	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300810	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300812	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300813	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR2300814	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+ERR263535	NA	NA	Candida albicans	High	Review	Review	1 marker(s)	Excluded	Review	QUAST assembly QC; AMR marker detected
+ERR3040852	NA	NA	Pichia kudriavzevii	Low / review	Review	Review	No curated marker detected	Excluded	Review	species confidence; QUAST assembly QC
+ERR331060	NA	NA	Nakaseomyces glabratus	Low / review	Pass	Pass	No curated marker detected	Review	Review	species confidence
+ERR331061	NA	NA	Nakaseomyces glabratus	Low / review	Pass	Pass	No curated marker detected	Review	Review	species confidence
+ERR570065	NA	NA	Nakaseomyces glabratus	Low / review	Pass	Pass	No curated marker detected	Review	Review	species confidence
+SRR10967506	NA	NA	Candida tropicalis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR10967518	NA	NA	Candida tropicalis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR11092001	NA	NA	Candidozyma auris	Low / review	Pass	Pass	No curated marker detected	Included / eligible	Review	species confidence
+SRR11235423	NA	NA	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235431	NA	NA	Candida albicans	High	Review	Review	1 marker(s)	Excluded	Review	QUAST assembly QC; AMR marker detected
+SRR25474587	NA	NA	Candida parapsilosis	High	Review	Review	No curated marker detected	Excluded	Review	QUAST assembly QC
+SRR38908326	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908330	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908334	NA	NA	Candidozyma auris	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR6475853	NA	NA	Clavispora lusitaniae	Low / review	Pass	Pass	No curated marker detected	Excluded	Review	species confidence
+SRR6476030	NA	NA	Clavispora lusitaniae	Low / review	Pass	Pass	No curated marker detected	Excluded	Review	species confidence
