@@ -7,17 +7,17 @@
   ],
 
   "rMAP_Candida.read1s": [
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_01_R1.fastq.gz",
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_02_R1.fastq.gz",
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_03_R1.fastq.gz",
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_04_R1.fastq.gz"
+    "~/Candida_albicans_sample_01_R1.fastq.gz",
+    "~/Candida_albicans_sample_02_R1.fastq.gz",
+    "~/Candida_albicans_sample_03_R1.fastq.gz",
+    "~/Candida_albicans_sample_04_R1.fastq.gz"
   ],
 
   "rMAP_Candida.read2s": [
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_01_R2.fastq.gz",
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_02_R2.fastq.gz",
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_03_R2.fastq.gz",
-    "gs://YOUR_BUCKET/example/Candida_albicans_sample_04_R2.fastq.gz"
+    "~/Candida_albicans_sample_01_R2.fastq.gz",
+    "~/Candida_albicans_sample_02_R2.fastq.gz",
+    "~/Candida_albicans_sample_03_R2.fastq.gz",
+    "~/Candida_albicans_sample_04_R2.fastq.gz"
   ],
 
   "rMAP_Candida.do_trimming": true,
