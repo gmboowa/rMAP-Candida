@@ -1,0 +1,5 @@
+sample_id	species	percent_reads	contigs	n50	gc_percent	amr_hits
+SRR19214212	Candidozyma auris	98.09	8,519	8,028	38.76	1
+SRR19214213	Candidozyma auris	99.52	286	84,821	45.09	0
+SRR19214214	Candidozyma auris	99.23	295	79,213	45.09	0
+SRR19214215	Candidozyma auris	98.41	300	83,466	45.03	1

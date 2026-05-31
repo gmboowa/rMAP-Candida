@@ -1,0 +1,5 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+SRR19214212	2021-04	Lagos	Candidozyma auris	High	Review	Review	1 marker(s)	Included / eligible	Review	QUAST assembly QC; AMR marker detected
+SRR19214213	2021-03	Lagos	Candidozyma auris	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR19214214	2021-02	Lagos	Candidozyma auris	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR19214215	2021-02	Lagos	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected

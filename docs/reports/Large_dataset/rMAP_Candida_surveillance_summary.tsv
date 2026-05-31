@@ -1,0 +1,51 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+SRR10967519	missing	NA	Candida tropicalis	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR11235409	2018-11-30	43.65 N 79.38 W	Candida albicans	High	Review	Review	1 marker(s)	Excluded	Review	QUAST assembly QC; AMR marker detected
+SRR11235422	2017-03-06	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235424	2017-03-29	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235425	2017-10-10	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235426	2017-07-27	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235427	2016-10-31	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235428	2016-07-05	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235429	2015-10-27	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR11235430	2015-09-22	43.65 N 79.38 W	Nakaseomyces glabratus	High	Pass	Pass	1 marker(s)	Review	Review	AMR marker detected
+SRR12823762	2016	NA	Candida tropicalis	High	Review	Review	No curated marker detected	Included / eligible	Review	QUAST assembly QC
+SRR23951614	2015	43.64 N 72.25 W	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR24123449	2020-10-08	NA	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR24123452	2020-10-07	NA	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR24123455	2020-12-16	NA	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR24123459	2020-10-16	NA	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR24123461	2020-10-13	NA	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR24123463	2020-10-12	NA	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR30781078	2020-07	25.38 N 68.37 E	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR30781089	2020-10	25.38 N 68.37 E	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR30781120	2020-10	32.08 N 72.67 E	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR30781135	2023-03	30.2 N 71.47 E	Clavispora lusitaniae	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR30781188	2022-12	24.86 N 67.01 E	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR30781189	2022-12	24.86 N 67.01 E	Clavispora lusitaniae	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR35650155	2021	NA	Candida tropicalis	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR35650156	2021	NA	Candida tropicalis	High	Review	Review	No curated marker detected	Included / eligible	Review	QUAST assembly QC
+SRR35650157	2021	NA	Candida tropicalis	High	Review	Review	No curated marker detected	Included / eligible	Review	QUAST assembly QC
+SRR38394166	NA	NA	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR38394168	NA	NA	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR38394169	NA	NA	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR38394173	NA	NA	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR38394176	NA	NA	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR38566159	missing	NA	Pichia kudriavzevii	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38566164	missing	NA	Pichia kudriavzevii	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38566207	missing	NA	Pichia kudriavzevii	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38566258	missing	NA	Pichia kudriavzevii	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38566259	missing	NA	Pichia kudriavzevii	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38566263	missing	NA	Pichia kudriavzevii	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38842632	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38842634	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38887223	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38906258	NA	NA	Candidozyma auris	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38906262	NA	NA	Candidozyma auris	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38906266	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908327	NA	NA	Candidozyma auris	High	Pass	Pass	No curated marker detected	Included / eligible	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR38908328	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908329	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908333	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908336	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR38908337	NA	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected

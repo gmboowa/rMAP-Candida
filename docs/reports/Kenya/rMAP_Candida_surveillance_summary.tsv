@@ -1,0 +1,6 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+SRR10461138	2018-05-16	0.58 N 37.84 E	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR10461238	2013-10-22	0.58 N 37.84 E	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30692992	2019-06-25	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30693012	2019-06-27	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30693032	2019-06-06	NA	Candidozyma auris	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected

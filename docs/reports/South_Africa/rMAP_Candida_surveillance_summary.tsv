@@ -1,0 +1,7 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+SRR28395727	2005	Free State	Candida parapsilosis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR28395728	2001	Gauteng	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR28395732	2003	Gauteng	Candida parapsilosis	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+SRR28395738	2003	Free State	Candida parapsilosis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR28395739	2003	Free State	Candida parapsilosis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR28395740	2003	Free State	Candida parapsilosis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status

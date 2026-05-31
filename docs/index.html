@@ -518,7 +518,7 @@
           <div class="title">Candida — Small dataset</div>
           <p class="desc">
             Compact demonstration report for a small Candida benchmark dataset, showing read QC, species typing,
-            assembly assessment, antifungal-resistance marker screening, and phylogenetic relatedness outputs.
+            assembly assessment, antifungal-resistance marker screening & phylogenetic relatedness outputs.
           </p>
           <div class="chips">
             <span class="chip chip-species">Small dataset</span>
@@ -540,7 +540,7 @@
           <div class="title">Candida — Medium dataset</div>
           <p class="desc">
             Intermediate-scale benchmark report for evaluating rMAP-Candida across multiple Candida species,
-            with species-aware phylogenomics, BUSCO/completeness summaries, SNP-distance outputs, and AMR marker screening.
+            with species-aware phylogenomics, BUSCO/completeness summaries, SNP-distance outputs & AMR marker screening.
           </p>
           <div class="chips">
             <span class="chip chip-species">Medium dataset</span>
@@ -562,7 +562,7 @@
           <div class="title">Candida — Large dataset</div>
           <p class="desc">
             Larger benchmark report demonstrating workflow scalability for Candida genome surveillance, including QC,
-            species typing, assembly-quality summaries, AMR marker screening, and phylogenetic relatedness outputs.
+            species typing, assembly-quality summaries, AMR marker screening & phylogenetic relatedness outputs.
           </p>
           <div class="chips">
             <span class="chip chip-species">Large dataset</span>
@@ -581,16 +581,83 @@
           <div class="icon" aria-hidden="true">
             <img id="candida-img-surveillance" src="assets/Candida_albicans.png" alt="Candida species image" loading="lazy">
           </div>
-          <div class="title">Candida — Surveillance metadata demo</div>
+          <div class="title">Candida — Metadata demo</div>
           <p class="desc">
             Ten-sample demonstration showing how surveillance metadata can be added to the workflow and carried into the HTML report,
-            including sample source, geography, collection details, species calls, AMR markers, and phylogenetic relatedness summaries.
+            including sample source, geography, collection details, species calls, AMR markers & phylogenetic relatedness summaries.
           </p>
           <div class="chips">
             <span class="chip chip-species">Metadata demo</span>
             <span class="chip chip-hit">10 samples</span>
             <span class="chip">Sample source</span>
             <span class="chip">Surveillance fields</span>
+          </div>
+        </a>
+
+
+        <!-- South Africa surveillance dataset -->
+        <a
+          class="card"
+          href="./reports/South_Africa/report.html"
+          data-name="rMAP-Candida South Africa dataset Candida clinical isolates surveillance AMR species typing assembly QC phylogenomics phylogenetic relatedness"
+        >
+          <div class="icon" aria-hidden="true">
+            <img id="candida-img-south-africa" src="assets/Candida_albicans.png" alt="Candida species image" loading="lazy">
+          </div>
+          <div class="title">Candida — South Africa dataset</div>
+          <p class="desc">
+            Country-specific surveillance report for South African Candida genome datasets, integrating species typing,
+            assembly assessment, antifungal-resistance marker screening, SNP-distance outputs & phylogenetic relatedness summaries.
+          </p>
+          <div class="chips">
+            <span class="chip chip-species">South Africa</span>
+            <span class="chip chip-hit">Country dataset</span>
+            <span class="chip">AMR screening</span>
+            <span class="chip">Phylogenetic relatedness</span>
+          </div>
+        </a>
+
+        <!-- Kenya surveillance dataset -->
+        <a
+          class="card"
+          href="./reports/Kenya/report.html"
+          data-name="rMAP-Candida Kenya dataset Candida clinical isolates surveillance AMR species typing assembly QC phylogenomics phylogenetic relatedness"
+        >
+          <div class="icon" aria-hidden="true">
+            <img id="candida-img-kenya" src="assets/Candida_albicans.png" alt="Candida species image" loading="lazy">
+          </div>
+          <div class="title">Candida — Kenya dataset</div>
+          <p class="desc">
+            Country-specific surveillance report for Kenyan Candida genome datasets, showing sample-level species calls,
+            assembly-quality summaries, antifungal-resistance marker screening & phylogenetic relatedness outputs.
+          </p>
+          <div class="chips">
+            <span class="chip chip-species">Kenya</span>
+            <span class="chip chip-hit">Country dataset</span>
+            <span class="chip">Species typing</span>
+            <span class="chip">Phylogenomics</span>
+          </div>
+        </a>
+
+        <!-- Nigeria surveillance dataset -->
+        <a
+          class="card"
+          href="./reports/Nigeria/report.html"
+          data-name="rMAP-Candida Nigeria dataset Candida clinical isolates surveillance AMR species typing assembly QC phylogenomics phylogenetic relatedness"
+        >
+          <div class="icon" aria-hidden="true">
+            <img id="candida-img-nigeria" src="assets/Candida_albicans.png" alt="Candida species image" loading="lazy">
+          </div>
+          <div class="title">Candida — Nigeria dataset</div>
+          <p class="desc">
+            Country-specific surveillance report for Nigerian Candida genome datasets, combining read QC, species typing,
+            assembly assessment, antifungal-resistance marker screening, SNP-distance analysis & phylogenetic relatedness.
+          </p>
+          <div class="chips">
+            <span class="chip chip-species">Nigeria</span>
+            <span class="chip chip-hit">Country dataset</span>
+            <span class="chip">Assembly QC</span>
+            <span class="chip">Phylogenetic relatedness</span>
           </div>
         </a>
 
@@ -603,10 +670,10 @@
           <div class="icon" aria-hidden="true">
             <img id="candida-img-ugandan" src="assets/Candida_albicans.png" alt="Candida species image" loading="lazy">
           </div>
-          <div class="title">Candida — Ugandan dataset</div>
+          <div class="title">Candida — Uganda dataset</div>
           <p class="desc">
             Clinical surveillance report for the Ugandan Candida dataset, integrating sample-level species typing,
-            assembly assessment, antifungal-resistance marker screening, SNP-distance outputs, and species-aware phylogenetic relatedness.
+            assembly assessment, antifungal-resistance marker screening, SNP-distance outputs & species-aware phylogenetic relatedness.
           </p>
           <div class="chips">
             <span class="chip chip-species">Ugandan dataset</span>
@@ -730,6 +797,24 @@
 
     setupFallback(
       'candida-img-ugandan',
+      candidaImageCandidates,
+      candidaFallbackSvg
+    );
+
+    setupFallback(
+      'candida-img-south-africa',
+      candidaImageCandidates,
+      candidaFallbackSvg
+    );
+
+    setupFallback(
+      'candida-img-kenya',
+      candidaImageCandidates,
+      candidaFallbackSvg
+    );
+
+    setupFallback(
+      'candida-img-nigeria',
       candidaImageCandidates,
       candidaFallbackSvg
     );

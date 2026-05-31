@@ -1,0 +1,7 @@
+sample_id	species	percent_reads	contigs	n50	gc_percent	amr_hits
+SRR28395727	Candida parapsilosis	99.98	396	112,532	38.65	0
+SRR28395728	Candida parapsilosis	100.00	404	105,599	38.66	1
+SRR28395732	Candida parapsilosis	100.00	403	103,078	38.64	1
+SRR28395738	Candida parapsilosis	100.00	449	85,376	38.64	0
+SRR28395739	Candida parapsilosis	100.00	408	110,836	38.65	0
+SRR28395740	Candida parapsilosis	99.97	406	109,456	38.65	0
