@@ -1,0 +1,11 @@
+sample_id	species	percent_reads	contigs	n50	gc_percent	amr_hits
+SRR30894123	Candida albicans	99.21	1,506	33,842	33.42	1
+SRR30894124	Candida albicans	99.54	1,237	52,568	33.43	1
+SRR30894128	Candida albicans	99.36	1,603	42,869	33.42	1
+SRR30894135	Candida albicans	99.09	1,382	37,919	33.39	1
+SRR30894139	Candida albicans	98.56	1,586	40,477	33.41	1
+SRR33417537	Candida albicans	99.37	1,354	52,873	33.40	1
+SRR33417538	Candida albicans	99.52	1,143	58,607	33.37	1
+SRR33417539	Candida parapsilosis	100.00	366	118,140	38.65	0
+SRR33417540	Candida albicans	99.41	1,270	52,398	33.40	1
+SRR33417542	Candida tropicalis	99.84	6,414	7,269	33.23	0

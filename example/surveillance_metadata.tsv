@@ -1,0 +1,11 @@
+sample_id	country	site	collection_date	specimen_type	patient_group	ward_or_facility	sequencing_platform
+SRR33417539	Uganda	Kampala	2023-08-16	blood	human	Kampala	ILLUMINA; Illumina HiSeq 2000
+SRR33417540	Uganda	Kampala	2022-06-22	blood	human	Kampala	ILLUMINA; Illumina HiSeq 2000
+SRR33417542	Uganda	Kampala	2019-03-14	blood	human	Kampala	ILLUMINA; Illumina HiSeq 2000
+SRR33417537	Uganda	Kampala	2023-08-16	blood	human	Kampala	ILLUMINA; Illumina HiSeq 2000
+SRR33417538	Uganda	Kampala	2023-08-16	blood	human	Kampala	ILLUMINA; Illumina HiSeq 2000
+SRR30894123	Uganda	Mbarara	2021-10	blood	human	Mbarara	ILLUMINA; NextSeq 500
+SRR30894128	Uganda	Mbarara	2021-10	blood	human	Mbarara	ILLUMINA; NextSeq 500
+SRR30894135	Uganda	Mbarara	2021-10	blood	human	Mbarara	ILLUMINA; NextSeq 500
+SRR30894139	Uganda	Mbarara	2021-10	blood	human	Mbarara	ILLUMINA; NextSeq 500
+SRR30894124	Uganda	Mbarara	2021-10	blood	human	Mbarara	ILLUMINA; NextSeq 500

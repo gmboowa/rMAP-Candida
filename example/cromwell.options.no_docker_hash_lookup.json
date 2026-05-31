@@ -1,0 +1,43 @@
+include required(classpath("application"))
+
+system {
+  docker {
+    hash-lookup {
+      enabled = false
+    }
+  }
+}
+
+backend {
+  default = "Local"
+
+  providers {
+    Local {
+      actor-factory = "cromwell.backend.impl.sfs.config.ConfigBackendLifecycleActorFactory"
+
+      config {
+        concurrent-job-limit = 4
+
+        runtime-attributes = """
+        String? docker
+        Int? cpu = 2
+        String? memory = "4G"
+        String? disks
+        """
+
+        submit = """
+        /bin/bash ${script}
+        """
+
+        submit-docker = """
+        docker run --rm \
+          -v ${cwd}:${docker_cwd} \
+          -v /tmp:/tmp \
+          -w ${docker_cwd} \
+          ${docker} \
+          /bin/bash ${script}
+        """
+      }
+    }
+  }
+}

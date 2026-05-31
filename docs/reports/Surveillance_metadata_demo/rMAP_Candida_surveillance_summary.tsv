@@ -1,0 +1,11 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+SRR30894123	2021-10	Mbarara	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30894124	2021-10	Mbarara	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30894128	2021-10	Mbarara	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30894135	2021-10	Mbarara	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR30894139	2021-10	Mbarara	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR33417537	2023-08-16	Kampala	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR33417538	2023-08-16	Kampala	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR33417539	2023-08-16	Kampala	Candida parapsilosis	High	Pass	Pass	No curated marker detected	Excluded	Ready for surveillance interpretation	No major automated warning flags using species typing, QUAST assembly QC, AMR screening, and phylogeny status
+SRR33417540	2022-06-22	Kampala	Candida albicans	High	Pass	Pass	1 marker(s)	Included / eligible	Review	AMR marker detected
+SRR33417542	2019-03-14	Kampala	Candida tropicalis	High	Review	Review	No curated marker detected	Excluded	Review	QUAST assembly QC
