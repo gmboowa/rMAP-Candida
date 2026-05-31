@@ -275,8 +275,6 @@ From the directory containing your WDL & input JSON:
 ```bash
 java -jar ~/cromwell-92.jar \
   run ~/rMAP_Candida.wdl \
-  --type WDL \
-  --type-version 1.0 \
   --inputs ~/rMAP-Candida.inputs.json \
   --options ~/cromwell.options.no_docker_hash_lookup.json
 ```
@@ -287,8 +285,6 @@ For long local runs, use `tmux` so that the workflow continues even if your term
 tmux new -s candida_run
 java -jar ~/cromwell-92.jar \
   run ~/rMAP_Candida.wdl \
-  --type WDL \
-  --type-version 1.0 \
   --inputs ~/rMAP-Candida.inputs.json \
   --options ~/cromwell.options.no_docker_hash_lookup.json
 ```
