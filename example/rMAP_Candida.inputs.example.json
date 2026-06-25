@@ -1,62 +1,32 @@
 {
   "rMAP_Candida.sample_names": [
-    "Candida_albicans_sample_01",
-    "Candida_albicans_sample_02",
-    "Candida_albicans_sample_03",
-    "Candida_albicans_sample_04"
+    "ERR263534",
+    "ERR331060"
   ],
-
   "rMAP_Candida.read1s": [
-    "~/Candida_albicans_sample_01_R1.fastq.gz",
-    "~/Candida_albicans_sample_02_R1.fastq.gz",
-    "~/Candida_albicans_sample_03_R1.fastq.gz",
-    "~/Candida_albicans_sample_04_R1.fastq.gz"
+    "~/ERR263534_1.fastq.gz",
+    "~/ERR331060_1.fastq.gz"
   ],
-
   "rMAP_Candida.read2s": [
-    "~/Candida_albicans_sample_01_R2.fastq.gz",
-    "~/Candida_albicans_sample_02_R2.fastq.gz",
-    "~/Candida_albicans_sample_03_R2.fastq.gz",
-    "~/Candida_albicans_sample_04_R2.fastq.gz"
+    "~/ERR263534_2.fastq.gz",
+    "~/ERR331060_2.fastq.gz"
   ],
-
   "rMAP_Candida.do_trimming": true,
   "rMAP_Candida.do_quality_control": true,
   "rMAP_Candida.do_species_typing": true,
   "rMAP_Candida.do_assembly": true,
   "rMAP_Candida.do_assembly_qc": true,
-  "rMAP_Candida.do_compleasm": false,
-  "rMAP_Candida.d  "rMAP_Candida.d  "rMAP_Candida.do_fungal_amr": true,
+  "rMAP_Candida.do_compleasm": true,
+  "rMAP_Candida.do_busco": false,
+  "rMAP_Candida.do_fungal_amr": true,
   "rMAP_Candida.do_phylogeny": true,
   "rMAP_Candida.render_phylogeny_tree": true,
-
-  "rMAP_Candida.min_species_samples_for_tree": 3,
-  "rMAP_Candida.snippy_phylogeny_species": [
-    "Candidozyma auris",
-    "Candida albicans"
-  ],
-  "rMAP_Candida.haploid_phylogeny_species": [
-    "Nakaseomyces glabratus"
-  ],
-
-  "rMAP_Candida.max_cpus": 8,
-  "rMAP_Candida.max_memory_gb": 32,
-  "rMAP_Candida.min_read_length": 50,
-  "rMAP_Candida.bracken_read_length": 150,
+  "rMAP_Candida.fungal_kraken2_bracken_docker": "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db",
   "rMAP_Candida.kraken_db_path": "/opt/kraken2_db/candida",
-  "rMAP_Candida.bracken_level": "S",
-
+  "rMAP_Candida.fungamr_docker": "gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed",
+  "rMAP_Candida.compleasm_docker": "huangnengcsu/compleasm:v0.2.7",
   "rMAP_Candida.candida_refs_docker": "gmboowa/rmap-candida-refs:2026.05",
   "rMAP_Candida.candida_refs_manifest": "/opt/rmap_candida_refs/references.tsv",
-
-  "rMAP_Candida.fungal_kraken2_bracken_docker": "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db",
-  "rMAP_Candida.fungamr_docker": "gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed",
-  "rMAP_Candida.megahit_docker": "quay.io/biocontainers/megahit:1.2.9--h5ca1c30_6",
-  "rMAP_Candida.quast_docker"  "rMAP_Candida.quast_docker"  "rMAdida.compleasm_docker": "huangnengcsu/compleasm:v0.2.7",
-  "rMAP_Candida.fastp_docker": "quay.io/biocontainers/fastp:0.23.4--hadf994f_2",
-  "rMAP_Candida.fastqc_docker": "staphb/fastqc:0.12.1",
-  "rMAP_Candida.multiqc_docker": "multiqc/multiqc:v1.24",
-  "rMAP_Candida.snippy_docker": "staphb/snippy:4.6.0",
-  "rMAP_Candida.iqtree2_docker": "gmboowa/iqtree2-python:2.3.4",
-  "rMAP_Candida.tree_visualization_docker": "gmboowa/ete3-render:1.18"
+  "rMAP_Candida.max_cpus": 4,
+  "rMAP_Candida.max_memory_gb": 14
 }
