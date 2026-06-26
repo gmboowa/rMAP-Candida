@@ -42,7 +42,7 @@ The example JSON expects these files:
 
 
 ```bash
-java -jar ~/cromwell-92.jar run ~/rMAP_Candida.wdl --inputs ~/rMAP-Candida.inputs.json
+java -jar ~/cromwell-92.jar run rMAP_Candida.wdl --inputs ~/rMAP-Candida.inputs.json
 ```
 
 ### 4. Confirm success
