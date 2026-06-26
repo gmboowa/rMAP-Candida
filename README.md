@@ -63,12 +63,8 @@ fastq-dump --split-3 --gzip ERR263534
 fastq-dump --split-3 --gzip ERR331060
 ```
 
-Confirm that the expected paired-end FASTQ files were created:
+Confirm that the expected paired-end FASTQ files are downloaded:
 
-```bash
-ls -lh ~/fastq/ERR263534_1.fastq.gz ~/fastq/ERR263534_2.fastq.gz
-ls -lh ~/fastq/ERR331060_1.fastq.gz ~/fastq/ERR331060_2.fastq.gz
-```
 
 If `fastq-dump` is not installed, install the SRA Toolkit first.
 
@@ -161,7 +157,7 @@ opts.k2d
 taxo.k2d
 ```
 
-### 4. Run the workflow without a custom Cromwell config
+### 3. Run the workflow without a custom Cromwell config
 
 From the repository directory:
 
@@ -179,7 +175,7 @@ java -jar ~/cromwell-92.jar run \
 
 If your local Cromwell/Docker setup produces Docker hash-lookup or Docker metadata errors, use the repository-provided no-Docker-hash-lookup Cromwell config instead.
 
-### 5. Confirm success
+### 4. Confirm success
 
 ```bash
 grep -i "workflow.*succeeded" cromwell-*.log || true
