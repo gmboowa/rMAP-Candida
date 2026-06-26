@@ -1,0 +1,3 @@
+sample_id	collection_date	site	species	species_confidence	assembly_qc	quast_contiguity_qc	amr_screen	phylogeny_status	surveillance_status	interpretation_note
+ERR263534	NA	NA	Candida albicans	High	Pass	Pass	1 marker(s)	Excluded	Review	AMR marker detected
+ERR331060	NA	NA	Nakaseomyces glabratus	Low / review	Pass	Pass	No curated marker detected	Excluded	Review	species confidence

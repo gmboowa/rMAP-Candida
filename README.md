@@ -38,6 +38,161 @@ The example JSON expects these files:
 ~/ERR331060_1.fastq.gz
 ~/ERR331060_2.fastq.gz
 ```
+Prepare the two-sample test FASTQs
+
+The example JSON expects these files:
+
+```text
+~/fastq/ERR263534_1.fastq.gz
+~/fastq/ERR263534_2.fastq.gz
+~/fastq/ERR331060_1.fastq.gz
+~/fastq/ERR331060_2.fastq.gz
+```
+
+Create a FASTQ directory:
+
+```bash
+mkdir -p ~/fastq
+cd ~/fastq
+```
+
+Download the two test samples from SRA using `fastq-dump`:
+
+```bash
+fastq-dump --split-3 --gzip ERR263534
+fastq-dump --split-3 --gzip ERR331060
+```
+
+Confirm that the expected paired-end FASTQ files were created:
+
+```bash
+ls -lh ~/fastq/ERR263534_1.fastq.gz ~/fastq/ERR263534_2.fastq.gz
+ls -lh ~/fastq/ERR331060_1.fastq.gz ~/fastq/ERR331060_2.fastq.gz
+```
+
+If `fastq-dump` is not installed, install the SRA Toolkit first.
+
+On macOS with Homebrew:
+
+```bash
+brew install sratoolkit
+```
+
+Then confirm that `fastq-dump` is available:
+
+```bash
+fastq-dump --version
+```
+
+Install Docker and confirm it is running
+
+rMAP-Candida uses Docker containers for the workflow tools and databases. Docker must be installed and running before launching Cromwell.
+
+#### macOS
+
+Install Docker Desktop from:
+
+```text
+https://www.docker.com/products/docker-desktop/
+```
+
+After installation, open **Docker Desktop** from Applications and wait until it says Docker is running.
+
+Confirm Docker works:
+
+```bash
+docker --version
+docker info
+```
+
+You can also test Docker with:
+
+```bash
+docker run hello-world
+```
+
+#### Linux
+
+Install Docker using your system package manager or the official Docker installation guide:
+
+```text
+https://docs.docker.com/engine/install/
+```
+
+After installation, start Docker:
+
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+Confirm Docker works:
+
+```bash
+docker --version
+docker info
+docker run hello-world
+```
+
+If Docker requires `sudo`, either run Docker commands with `sudo` or add your user to the Docker group according to your institution’s system policy.
+
+#### Check rMAP-Candida Docker images
+
+Before running Cromwell, confirm that key workflow containers can be pulled:
+
+```bash
+docker pull gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db
+docker pull gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed
+docker pull gmboowa/rmap-candida-refs:2026.05
+```
+
+Check that the Candida Kraken2/Bracken database is visible inside the container:
+
+```bash
+docker run --rm gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db \
+  bash -lc 'ls -lh /opt/kraken2_db/candida && ls /opt/kraken2_db/candida | head'
+```
+
+Expected database files include:
+
+```text
+hash.k2d
+opts.k2d
+taxo.k2d
+```
+
+### 4. Run the workflow without a custom Cromwell config
+
+From the repository directory:
+
+```bash
+cd ~/rMAP-Candida
+```
+
+Run the two-sample test workflow:
+
+```bash
+java -jar ~/cromwell-92.jar run \
+  rMAP_Candida.wdl \
+  --inputs example/rMAP-Candida.inputs.example.two_samples.json
+```
+
+If your local Cromwell/Docker setup produces Docker hash-lookup or Docker metadata errors, use the repository-provided no-Docker-hash-lookup Cromwell config instead.
+
+### 5. Confirm success
+
+```bash
+grep -i "workflow.*succeeded" cromwell-*.log || true
+find cromwell-executions/rMAP_Candida -name "rMAP_Candida_report.html" -print
+find cromwell-executions/rMAP_Candida \( \
+  -name "rMAP_Candida_summary.tsv" -o \
+  -name "rMAP_Candida_surveillance_summary.tsv" -o \
+  -name "rMAP_Candida_pairwise_snp_distances.tsv" \
+\) -print
+```
+
+The successful test report should summarize samples, top species groups, one curated AMR marker hit, and a median assembly N50 in bp. Species-aware phylogeny may be skipped for the two-sample test dataset if there are fewer than three same-species samples.
+
 ### 3. Run the workflow without a custom Cromwell config
 
 
@@ -61,18 +216,7 @@ The successful test report should summarize samples, top species groups, one cur
 
 ---
 
-| Concern | Repository response |
-|---|---|
-| Reviewer could not run the workflow | Added a one-command local Cromwell quick start and a two-sample example JSON. |
-| Broken or confusing input JSON | Replaced placeholder sample names with real test sample IDs and relative FASTQ paths. |
-| README too hard to follow | Reorganized the README around quick start, inputs, outputs, databases, validation, interpretation, and troubleshooting. |
-| Need a small downloadable test dataset | Added `example/download_two_sample_test_data.sh` and `example/rMAP-Candida.inputs.example.two_samples.json`. |
-| 4,000-line WDL is difficult to maintain | Split the monolithic WDL into a main workflow and importable modules under `wdl/modules/`. |
-| Custom Kraken2 database access unclear | Added public Docker pull/run checks and database-path verification instructions. |
-| Candida diploidy/polymorphism concerns | Added species-aware phylogeny, AMR interpretation, and limitations sections emphasizing diploidy, LOH, aneuploidy, CNV, and species-specific mechanisms. |
-| WDL/Cromwell choice not justified | Added a rationale for Cromwell/WDL portability, local/HPC/cloud execution, scatter-based reproducibility, Dockerized tasks, and provenance. |
 
----
 
 ## Repository layout
 
@@ -80,14 +224,17 @@ The successful test report should summarize samples, top species groups, one cur
 rMAP-Candida/
 ├── README.md
 ├── rMAP_Candida.wdl
+├── docker/
 ├
 ├── example/
 │   ├── rMAP_Candida.inputs.example.json
 │   ├── rMAP_Candida_accessions.tsv
-│   ├── surveillance_metadata.tsv
-│  
-├── docs/
-    └── assets/ & reports/ & index.html
+│   └── surveillance_metadata.tsv
+├
+└── docs/
+    ├── assets/
+    ├── reports/
+    └── index.html
 
 ```
 
