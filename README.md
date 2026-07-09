@@ -33,27 +33,30 @@ cd rMAP-Candida
 The example JSON expects these files:
 
 ```text
-~/ERR263534_1.fastq.gz
-~/ERR263534_2.fastq.gz
-~/ERR331060_1.fastq.gz
-~/ERR331060_2.fastq.gz
+example/fastq/ERR263534_1.fastq.gz
+example/fastq/ERR263534_2.fastq.gz
+example/fastq/ERR331060_1.fastq.gz
+example/fastq/ERR331060_2.fastq.gz
 ```
 Prepare the two-sample test FASTQs
 
 The example JSON expects these files:
 
 ```text
-~/fastq/ERR263534_1.fastq.gz
-~/fastq/ERR263534_2.fastq.gz
-~/fastq/ERR331060_1.fastq.gz
-~/fastq/ERR331060_2.fastq.gz
+example/fastq/ERR263534_1.fastq.gz
+example/fastq/ERR263534_2.fastq.gz
+example/fastq/ERR331060_1.fastq.gz
+example/fastq/ERR331060_2.fastq.gz
 ```
 
 Create a FASTQ directory:
 
 ```bash
-mkdir -p ~/fastq
-cd ~/fastq
+mkdir -p example/fastq
+cd example/fastq
+fastq-dump --split-3 --gzip ERR263534
+fastq-dump --split-3 --gzip ERR331060
+cd ../..
 ```
 
 Download the two test samples from SRA using `fastq-dump`:
@@ -265,31 +268,26 @@ Minimal two-sample example:
 {
   "rMAP_Candida.sample_names": ["ERR263534", "ERR331060"],
   "rMAP_Candida.read1s": [
-    "~/fastq/ERR263534_1.fastq.gz",
-    "~/fastq/ERR331060_1.fastq.gz"
+    "example/fastq/ERR263534_1.fastq.gz",
+    "example/fastq/ERR331060_1.fastq.gz"
   ],
   "rMAP_Candida.read2s": [
-    "~/fastq/ERR263534_2.fastq.gz",
-    "~/fastq/ERR331060_2.fastq.gz"
+    "example/fastq/ERR263534_2.fastq.gz",
+    "example/fastq/ERR331060_2.fastq.gz"
   ],
   "rMAP_Candida.do_trimming": true,
   "rMAP_Candida.do_quality_control": true,
   "rMAP_Candida.do_species_typing": true,
   "rMAP_Candida.do_assembly": true,
   "rMAP_Candida.do_assembly_qc": true,
-  "rMAP_Candida.do_compleasm": true,
+  "rMAP_Candida.do_compleasm": false,
   "rMAP_Candida.do_busco": false,
-  "rMAP_Candida.do_fungal_amr": true,
-  "rMAP_Candida.do_phylogeny": true,
-  "rMAP_Candida.render_phylogeny_tree": true,
-  "rMAP_Candida.fungal_kraken2_bracken_docker": "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db",
-  "rMAP_Candida.kraken_db_path": "/opt/kraken2_db/candida",
-  "rMAP_Candida.fungamr_docker": "gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed",
-  "rMAP_Candida.compleasm_docker": "huangnengcsu/compleasm:v0.2.7",
-  "rMAP_Candida.candida_refs_docker": "gmboowa/rmap-candida-refs:2026.05",
-  "rMAP_Candida.candida_refs_manifest": "/opt/rmap_candida_refs/references.tsv",
-  "rMAP_Candida.max_cpus": 4,
-  "rMAP_Candida.max_memory_gb": 14
+  "rMAP_Candida.do_fungal_amr": false,
+  "rMAP_Candida.do_phylogeny": false,
+  "rMAP_Candida.render_phylogeny_tree": false,
+  "rMAP_Candida.max_cpus": 2,
+  "rMAP_Candida.max_memory_gb": 8,
+  "rMAP_Candida.max_disk_gb": 100
 }
 ```
 
