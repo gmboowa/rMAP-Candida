@@ -141,7 +141,7 @@ Before running Cromwell, confirm that key workflow containers can be pulled:
 
 ```bash
 docker pull gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db
-docker pull gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed
+docker pull gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9
 docker pull gmboowa/rmap-candida-refs:2026.05
 ```
 
@@ -354,7 +354,7 @@ docker/kraken2_bracken/README.md
 ### AMR container
 
 ```bash
-docker pull gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed
+docker pull gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9
 ```
 
 ### Reference-genome container
@@ -482,7 +482,7 @@ Check the exact tag:
 
 ```bash
 docker pull gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db
-docker pull gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed
+docker pull gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9
 docker pull gmboowa/rmap-candida-refs:2026.05
 ```
 

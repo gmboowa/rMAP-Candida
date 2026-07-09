@@ -23,7 +23,7 @@
   "rMAP_Candida.render_phylogeny_tree": true,
   "rMAP_Candida.fungal_kraken2_bracken_docker": "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db",
   "rMAP_Candida.kraken_db_path": "/opt/kraken2_db/candida",
-  "rMAP_Candida.fungamr_docker": "gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed",
+  "rMAP_Candida.fungamr_docker": "gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9",
   "rMAP_Candida.compleasm_docker": "huangnengcsu/compleasm:v0.2.7",
   "rMAP_Candida.candida_refs_docker": "gmboowa/rmap-candida-refs:2026.05",
   "rMAP_Candida.candida_refs_manifest": "/opt/rmap_candida_refs/references.tsv",

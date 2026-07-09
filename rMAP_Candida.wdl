@@ -1144,32 +1144,15 @@ task FUNGAL_AMR_CHARACTERIZATION {
     command -v miniprot >> "${LOG_OUT}" 2>&1 || true
 
     # rc147 dependency hardening:
-    # ChroQueTas requires miniprot. Older AMR images can contain ChroQueTas.sh but
-    # lack miniprot, causing:
-    #   ERROR: miniprot is required and not installed
-    # Previous rc146 logic could then collapse this technical failure into
-    # "No curated marker detected". This block tries a best-effort runtime install
-    # and, if still missing, reports SCANNER_DEPENDENCY_MISSING instead of a no-hit.
+    # ChroQueTas requires miniprot. The production AMR Docker image must provide it.
     MINIPROT_MISSING=0
-    if ! command -v miniprot >/dev/null 2>&1; then
-      echo "WARNING: miniprot is missing before scanner execution; attempting runtime bootstrap." >> "${LOG_OUT}"
-      if command -v micromamba >/dev/null 2>&1; then
-        micromamba install -y -c bioconda -c conda-forge miniprot >> "${LOG_OUT}" 2>&1 || true
-      elif command -v mamba >/dev/null 2>&1; then
-        mamba install -y -c bioconda -c conda-forge miniprot >> "${LOG_OUT}" 2>&1 || true
-      elif command -v conda >/dev/null 2>&1; then
-        conda install -y -c bioconda -c conda-forge miniprot >> "${LOG_OUT}" 2>&1 || true
-      else
-        echo "No micromamba/mamba/conda executable found for runtime miniprot bootstrap." >> "${LOG_OUT}"
-      fi
-      hash -r 2>/dev/null || true
-    fi
     if command -v miniprot >/dev/null 2>&1; then
       echo "Confirmed dependency: miniprot at $(command -v miniprot)" >> "${LOG_OUT}"
       miniprot --version >> "${LOG_OUT}" 2>&1 || true
     else
       MINIPROT_MISSING=1
-      echo "DEPENDENCY_MISSING: miniprot is not available after bootstrap attempt." >> "${LOG_OUT}"
+      echo "DEPENDENCY_MISSING: miniprot is not available in the configured AMR Docker image." >> "${LOG_OUT}"
+    fi
     fi
 
     # -------------------------------------------------------------------------
@@ -1344,7 +1327,7 @@ EOF_CHROQ_SHIM
 
     if [ "${MINIPROT_MISSING}" = "1" ]; then
       SCAN_RC=127
-      echo "DEPENDENCY_MISSING: miniprot is required by ChroQueTas but is not installed in the AMR Docker image and runtime bootstrap failed. Build/pull an AMR image that includes miniprot, then rerun." > amr_out/scanner.stderr
+      echo "DEPENDENCY_MISSING: miniprot is required by ChroQueTas but is not installed in the AMR Docker image. Build/pull an AMR image that includes miniprot, then rerun." > amr_out/scanner.stderr
       : > amr_out/scanner.stdout
     elif command -v run_fungamr_scan >/dev/null 2>&1; then
       echo "Confirmed CLI: $(command -v run_fungamr_scan)" >> "${LOG_OUT}"
