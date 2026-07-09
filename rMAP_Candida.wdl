@@ -57,7 +57,7 @@ workflow rMAP_Candida {
     Array[String] haploid_phylogeny_species = ["Nakaseomyces glabratus"]
 
     String fungal_kraken2_bracken_docker = "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db"
-    String fungamr_docker = "gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v7-fixed"
+    String fungamr_docker = "gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9"
     String megahit_docker = "quay.io/biocontainers/megahit:1.2.9--h5ca1c30_6"
     String quast_docker = "staphb/quast:5.2.0"
     String compleasm_docker = "huangnengcsu/compleasm:v0.2.7"
