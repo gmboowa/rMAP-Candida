@@ -1159,7 +1159,7 @@ task FUNGAL_AMR_CHARACTERIZATION {
     # v5 FIX: use a ChroQueTas-enabled AMR Docker image and keep shell-only parsing.
     # The previous WDL patch protected Cromwell outputs but the old Docker image
     # did not contain ChroQueTas in PATH. This WDL defaults to the rebuilt image
-    # gmboowa/rmap-myc-candida-amr:2026.05-chroquetas-v6. Parsing remains POSIX shell/awk.
+    # gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9. Parsing remains POSIX shell/awk.
     # -------------------------------------------------------------------------
 
     SPECIES="NA"
