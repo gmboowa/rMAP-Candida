@@ -192,18 +192,347 @@ find cromwell-executions/rMAP_Candida \( \
 
 The successful test report should summarize samples, top species groups, one curated AMR marker hit, and a median assembly N50 in bp. Species-aware phylogeny may be skipped for the two-sample test dataset if there are fewer than three same-species samples.
 
-### 3. Run the workflow without a custom Cromwell config
+### 3. Run the complete workflow locally from raw paired-end reads
 
+Local Docker/Colima execution of rMAP-Candida has been validated with **Cromwell 91** and the supplied local backend configuration:
 
-```bash
-java -jar ~/cromwell-91.jar run rMAP_Candida.wdl --inputs ~/rMAP-Candida.inputs.json
+```text
+example/cromwell.local.fifo_portable.conf
 ```
 
-### 4. Confirm success
+For the validated local setup, do not run Cromwell without the configuration file. The configuration:
+
+- selects Cromwell's Local/Shared File System backend;
+- limits concurrent tasks to reduce CPU and memory oversubscription on a laptop;
+- converts WDL `cpu` and `memory` runtime attributes into Docker `--cpus` and `--memory` limits;
+- passes the container-visible `${docker_script}` path to Docker;
+- places Cromwell and tool temporary FIFOs under native `/tmp`, avoiding named-pipe failures on macOS/Colima bind-mounted directories; and
+- disables Docker hash lookup for this validated local environment.
+
+> **Local Cromwell compatibility:** Use `cromwell-91.jar` with this configuration. During local validation, Cromwell 92 produced a Local/SFS container-runtime coercion error before a downstream Docker task could launch. This was an execution-engine compatibility issue, not a failure of the rMAP-Candida task logic.
+
+#### 3.1 Prerequisites
+
+Confirm that Java and Docker are available:
 
 ```bash
-grep -i "workflow.*succeeded" cromwell-*.log || true
-find cromwell-executions/rMAP_Candida -name "rMAP_Candida_report.html" -print
+java -version
+docker info
+```
+
+When using Colima on macOS:
+
+```bash
+colima status
+```
+
+Place Cromwell 91 somewhere accessible, for example:
+
+```text
+~/cromwell-91.jar
+```
+
+Confirm the version:
+
+```bash
+java -jar ~/cromwell-91.jar --version
+```
+
+Expected:
+
+```text
+cromwell 91
+```
+
+#### 3.2 Prepare the raw-read input JSON
+
+Copy the supplied example:
+
+```bash
+cp example/rMAP_Candida.inputs.example.json \
+   example/rMAP_Candida.local_test.inputs.json
+```
+
+Edit `example/rMAP_Candida.local_test.inputs.json` so that:
+
+- `sample_names`, `read1s`, and `read2s` have the same number of entries;
+- each R1 file is paired with the corresponding R2 file;
+- FASTQ paths are absolute local paths or otherwise visible to Cromwell;
+- the full raw-read workflow modules are enabled; and
+- preassembled-contig resume mode is disabled.
+
+A minimal two-sample raw-read configuration has the following form:
+
+```json
+{
+  "rMAP_Candida.sample_names": [
+    "sample_01",
+    "sample_02"
+  ],
+  "rMAP_Candida.read1s": [
+    "/absolute/path/to/sample_01_R1.fastq.gz",
+    "/absolute/path/to/sample_02_R1.fastq.gz"
+  ],
+  "rMAP_Candida.read2s": [
+    "/absolute/path/to/sample_01_R2.fastq.gz",
+    "/absolute/path/to/sample_02_R2.fastq.gz"
+  ],
+
+  "rMAP_Candida.do_trimming": true,
+  "rMAP_Candida.do_quality_control": true,
+  "rMAP_Candida.do_species_typing": true,
+  "rMAP_Candida.do_assembly": true,
+  "rMAP_Candida.do_assembly_qc": true,
+  "rMAP_Candida.do_compleasm": true,
+  "rMAP_Candida.do_busco": false,
+  "rMAP_Candida.do_fungal_amr": true,
+  "rMAP_Candida.do_phylogeny": true,
+  "rMAP_Candida.render_phylogeny_tree": true,
+
+  "rMAP_Candida.use_preassembled_contigs": false,
+
+  "rMAP_Candida.fungal_kraken2_bracken_docker": "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db",
+  "rMAP_Candida.kraken_db_path": "/opt/kraken2_db/candida",
+  "rMAP_Candida.fungamr_docker": "gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9",
+  "rMAP_Candida.compleasm_docker": "huangnengcsu/compleasm:v0.2.7",
+  "rMAP_Candida.candida_refs_docker": "gmboowa/rmap-candida-refs:2026.05",
+  "rMAP_Candida.candida_refs_manifest": "/opt/rmap_candida_refs/references.tsv",
+
+  "rMAP_Candida.megahit_disable_hw_acceleration": true,
+  "rMAP_Candida.megahit_memory_percent": 65,
+  "rMAP_Candida.megahit_mem_flag": 0,
+  "rMAP_Candida.fastqc_memory_mb": 1024,
+
+  "rMAP_Candida.min_species_samples_for_tree": 3,
+  "rMAP_Candida.iqtree2_bootstraps": 1000,
+
+  "rMAP_Candida.max_cpus": 2,
+  "rMAP_Candida.max_memory_gb": 8
+}
+```
+
+For a species-specific phylogeny, at least `min_species_samples_for_tree` samples must have the same species call and a matching reference in the bundled Candida reference manifest. Mixed-species trees are intentionally not generated.
+
+#### 3.3 Run the raw-read workflow in the foreground
+
+From the repository root:
+
+```bash
+CROMWELL_JAR="$HOME/cromwell-91.jar"
+CROMWELL_CONF="$PWD/example/cromwell.local.fifo_portable.conf"
+WDL="$PWD/rMAP_Candida.wdl"
+INPUTS="$PWD/example/rMAP_Candida.local_test.inputs.json"
+
+java \
+  -Xms1g \
+  -Xmx3g \
+  -XX:+UseG1GC \
+  -Dconfig.file="$CROMWELL_CONF" \
+  -jar "$CROMWELL_JAR" \
+  run "$WDL" \
+  --inputs "$INPUTS"
+```
+
+This command starts the complete workflow from the raw paired-end FASTQ files. When enabled in the JSON, the workflow performs:
+
+1. read trimming with fastp;
+2. raw/trimmed-read quality assessment;
+3. Candida-focused Kraken2/Bracken species typing;
+4. de novo MEGAHIT assembly;
+5. QUAST assembly-contiguity assessment;
+6. optional Compleasm/BUSCO completeness analysis;
+7. fungal AMR characterization;
+8. species-aware core-SNP phylogeny;
+9. IQ-TREE inference and tree rendering; and
+10. generation of the final integrated HTML and TSV reports.
+
+#### 3.4 Run the raw-read workflow in the background on macOS
+
+For a long local run, use `nohup` to detach the process from the terminal and `caffeinate` to prevent idle sleep while macOS remains awake:
+
+```bash
+cd /path/to/rMAP-Candida
+
+CROMWELL_JAR="$HOME/cromwell-91.jar"
+CROMWELL_CONF="$PWD/example/cromwell.local.fifo_portable.conf"
+WDL="$PWD/rMAP_Candida.wdl"
+INPUTS="$PWD/example/rMAP_Candida.local_test.inputs.json"
+
+RUN_ID="$(date +%Y%m%d_%H%M%S)"
+LOG="$PWD/rMAP_Candida_raw_reads_${RUN_ID}.log"
+PIDFILE="$PWD/rMAP_Candida_raw_reads_${RUN_ID}.pid"
+
+nohup caffeinate -dimsu \
+  java \
+  -Xms1g \
+  -Xmx3g \
+  -XX:+UseG1GC \
+  -Dconfig.file="$CROMWELL_CONF" \
+  -jar "$CROMWELL_JAR" \
+  run "$WDL" \
+  --inputs "$INPUTS" \
+  > "$LOG" 2>&1 < /dev/null &
+
+PID=$!
+echo "$PID" > "$PIDFILE"
+disown "$PID"
+
+echo "rMAP-Candida raw-read workflow started"
+echo "PID: $PID"
+echo "PID file: $PIDFILE"
+echo "Log file: $LOG"
+```
+
+Closing the terminal does not stop the detached process. Closing a MacBook lid normally suspends macOS and pauses Docker/Colima, so keep the machine awake and connected to power for an uninterrupted run.
+
+Monitor the log:
+
+```bash
+tail -f "$LOG"
+```
+
+Press `Ctrl-C` to stop viewing the log; this does not stop Cromwell.
+
+Check whether Cromwell is still running:
+
+```bash
+PID="$(cat "$PIDFILE")"
+
+if kill -0 "$PID" 2>/dev/null; then
+  echo "Cromwell is running: PID $PID"
+  ps -p "$PID" -o pid,ppid,state,etime,%cpu,%mem,command
+else
+  echo "Cromwell is no longer running"
+fi
+```
+
+View the active Docker task:
+
+```bash
+docker ps --format \
+'table {{.ID}}\t{{.Status}}\t{{.Image}}'
+```
+
+View current container resource use:
+
+```bash
+docker stats --no-stream
+```
+
+### 4. Confirm successful completion and final report generation
+
+#### 4.1 Confirm the workflow succeeded
+
+For a background run:
+
+```bash
+grep -E \
+"Workflow actor.*completed with status 'Succeeded'|workflow finished with status 'Succeeded'|transitioned to state Succeeded" \
+"$LOG"
+```
+
+A successful run should include a message similar to:
+
+```text
+SingleWorkflowRunnerActor workflow finished with status 'Succeeded'
+```
+
+Also check for explicit failures:
+
+```bash
+grep -E \
+'exited with return code|completed with status .Failed.|workflow finished with status .Failed.|transitioned to state Failed' \
+"$LOG" || true
+```
+
+#### 4.2 Locate the final integrated HTML report
+
+```bash
+REPORT="$(find cromwell-executions/rMAP_Candida \
+  -path '*/call-MERGE_MYC_REPORTS/execution/rMAP_Candida_report.html' \
+  -type f -print0 |
+  xargs -0 ls -t 2>/dev/null |
+  head -n 1)"
+
+if [ -n "$REPORT" ] && [ -s "$REPORT" ]; then
+  echo "Final HTML report: $REPORT"
+  ls -lh "$REPORT"
+else
+  echo "Final HTML report was not found or is empty"
+  exit 1
+fi
+```
+
+Open it on macOS:
+
+```bash
+open "$REPORT"
+```
+
+#### 4.3 Confirm the AMR and phylogeny sections are present
+
+```bash
+grep -q 'id="amr"' "$REPORT" &&
+  echo "AMR section present"
+
+grep -q 'id="phylogeny"' "$REPORT" &&
+  echo "Phylogeny section present"
+```
+
+For a phylogeny-eligible dataset, confirm that the report contains embedded tree content:
+
+```bash
+grep -Eq \
+'class="tree-img"|data:image/png;base64|<svg' \
+"$REPORT" &&
+  echo "Rendered phylogeny content present"
+```
+
+If no species group meets the sample-count/reference requirements, the phylogeny section remains in the final report and explains why no tree was generated.
+
+#### 4.4 Confirm that sample-level outputs were produced
+
+Count successful assembly tasks:
+
+```bash
+find cromwell-executions/rMAP_Candida \
+  -path '*/call-ASSEMBLY/shard-*/execution/rc' \
+  -exec sh -c '
+    for rc do
+      [ "$(cat "$rc")" = "0" ] && echo "$rc"
+    done
+  ' sh {} + |
+wc -l
+```
+
+Locate final contigs:
+
+```bash
+find cromwell-executions/rMAP_Candida \
+  -path '*/call-ASSEMBLY/shard-*/execution/*.contigs.fasta' \
+  -type f -size +0c -print
+```
+
+Locate AMR summaries:
+
+```bash
+find cromwell-executions/rMAP_Candida \
+  -path '*/call-AMR/shard-*/execution/*.fungal_amr.summary.tsv' \
+  -type f -size +0c -print
+```
+
+Locate species-aware tree outputs:
+
+```bash
+find cromwell-executions/rMAP_Candida \
+  -type f \
+  \( -name '*.treefile' -o -name '*.nwk' -o -name '*.png' \) \
+  -size +0c -print
+```
+
+Locate the main tabular outputs:
+
+```bash
 find cromwell-executions/rMAP_Candida \( \
   -name "rMAP_Candida_summary.tsv" -o \
   -name "rMAP_Candida_surveillance_summary.tsv" -o \
@@ -211,11 +540,8 @@ find cromwell-executions/rMAP_Candida \( \
 \) -print
 ```
 
-The successful test report should summarize samples, top species groups, one curated AMR marker hit, and a median assembly N50 in bp. Species-aware phylogeny.
-
+A complete raw-read validation should demonstrate that rMAP-Candida starts with paired FASTQ files, completes assembly and all enabled downstream analyses, and produces the non-empty integrated HTML report. AMR findings are genomic screening evidence and should be interpreted with species identity, validated marker catalogues, clinical metadata, and phenotypic antifungal susceptibility testing where appropriate.
 ---
-
-
 
 ## Repository layout
 
