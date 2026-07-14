@@ -171,7 +171,7 @@ cd ~/rMAP-Candida
 Run the two-sample test workflow:
 
 ```bash
-java -jar ~/cromwell-92.jar run \
+java -jar ~/cromwell-91.jar run \
   rMAP_Candida.wdl \
   --inputs example/rMAP-Candida.inputs.example.two_samples.json
 ```
@@ -196,7 +196,7 @@ The successful test report should summarize samples, top species groups, one cur
 
 
 ```bash
-java -jar ~/cromwell-92.jar run rMAP_Candida.wdl --inputs ~/rMAP-Candida.inputs.json
+java -jar ~/cromwell-91.jar run rMAP_Candida.wdl --inputs ~/rMAP-Candida.inputs.json
 ```
 
 ### 4. Confirm success
@@ -471,7 +471,7 @@ This implementation is designed to reduce installation barriers: users do not ne
 Use the no-config command first:
 
 ```bash
-java -jar ~/cromwell-92.jar run rMAP_Candida.wdl --inputs example/rMAP-Candida.inputs.json
+java -jar ~/cromwell-91.jar run rMAP_Candida.wdl --inputs example/rMAP-Candida.inputs.json
 ```
 
 Only use a custom Cromwell config if your local Docker setup produces hash-lookup or Docker metadata errors.
