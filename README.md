@@ -11,9 +11,9 @@
 ---
 
 
-**rMAP-Candida** is a Dockerized WDL/Cromwell workflow for paired-end *Candida* whole-genome sequencing analysis. It integrates read QC and trimming, *Candida*-focused species typing, de novo assembly, assembly-contiguity assessment, optional genome-completeness assessment, curated antifungal-resistance marker screening, species-aware phylogenomics, pairwise SNP-distance summaries, and an integrated HTML surveillance report.
+**rMAP-Candida** is a Dockerized WDL/Cromwell workflow for paired-end *Candida* whole-genome sequencing analysis. It integrates read QC & trimming, *Candida*-focused species typing, *de novo* assembly, assembly-contiguity assessment, optional genome-completeness assessment, curated antifungal-resistance marker screening, species-aware phylogenomics, pairwise SNP-distance summaries & an integrated HTML surveillance report.
 
-The workflow is intended for **research, training, method benchmarking, outbreak-investigation support, and public-health genomic surveillance**. It is **not a standalone clinical diagnostic system**. Antifungal-resistance results are reported as genomic screening evidence and should be interpreted with species identity, sample metadata, validated catalogues, and phenotypic antifungal susceptibility testing where required.
+The workflow is intended for **research, training, method benchmarking, outbreak-investigation support & public-health genomic surveillance**. It is **not a standalone clinical diagnostic system**. Antifungal-resistance results are reported as genomic screening evidence & should be interpreted with species identity, sample metadata, validated catalogues & phenotypic antifungal susceptibility testing where required.
 
 
 ---
@@ -30,7 +30,7 @@ cd rMAP-Candida
 
 ### 2. Prepare the two-sample raw-read test data
 
-The example starts from paired-end raw FASTQ files and runs the complete workflow, including trimming, quality control, species typing, de novo assembly, assembly assessment, antifungal-resistance screening, phylogenomics where eligible, and final HTML reporting.
+The example starts from paired-end raw FASTQ files & runs the complete workflow, including trimming, quality control, species typing, *de novo* assembly, assembly assessment, antifungal-resistance screening, phylogenomics where eligible & final HTML reporting.
 
 The example input JSON expects:
 
@@ -41,7 +41,7 @@ example/fastq/ERR331060_1.fastq.gz
 example/fastq/ERR331060_2.fastq.gz
 ```
 
-Create the FASTQ directory and download the two public test runs:
+Create the FASTQ directory & download the two public test runs:
 
 ```bash
 mkdir -p example/fastq
@@ -53,7 +53,7 @@ fastq-dump --split-3 --gzip ERR331060
 cd ../..
 ```
 
-Confirm that all four files are present and non-empty:
+Confirm that all four files are present & non-empty:
 
 ```bash
 ls -lh \
@@ -70,9 +70,9 @@ brew install sratoolkit
 fastq-dump --version
 ```
 
-### 3. Confirm Java, Docker, and Cromwell 91
+### 3. Confirm Java, Docker & Cromwell 91
 
-rMAP-Candida uses Dockerized tasks. Confirm that Java and Docker are available:
+rMAP-Candida uses Dockerized tasks. Confirm that Java & Docker are available:
 
 ```bash
 java -version
@@ -135,10 +135,10 @@ example/cromwell.local.fifo_portable.conf
 The configuration file:
 
 - selects Cromwell's Local/Shared File System backend;
-- limits concurrent tasks to reduce CPU and memory oversubscription on a local machine;
-- maps WDL `cpu` and `memory` runtime attributes to Docker `--cpus` and `--memory` limits;
+- limits concurrent tasks to reduce CPU & memory oversubscription on a local machine;
+- maps WDL `cpu` & `memory` runtime attributes to Docker `--cpus` & `--memory` limits;
 - launches the container-visible `${docker_script}` path;
-- places Cromwell temporary files and FIFOs under native `/tmp`, avoiding named-pipe failures on macOS/Colima bind-mounted directories; and
+- places Cromwell temporary files & FIFOs under native `/tmp`, avoiding named-pipe failures on macOS/Colima bind-mounted directories; &
 - disables Docker hash lookup for the validated local execution environment.
 
 > **Local compatibility note:** Use `cromwell-91.jar` together with this configuration for the validated local Docker/Colima route. Cromwell 92 produced a Local/SFS container-runtime coercion error during local testing before a downstream Docker task could launch.
@@ -151,7 +151,7 @@ The supplied input should be:
 example/rMAP-Candida.inputs.example.two_samples.json
 ```
 
-Confirm that it enables de novo assembly and does not use preassembled contigs:
+Confirm that it enables *de novo* assembly & does not use preassembled contigs:
 
 ```bash
 jq '{
@@ -181,7 +181,7 @@ For a complete raw-read run, the relevant values should include:
 }
 ```
 
-The arrays `sample_names`, `read1s`, and `read2s` must have the same number of entries and must use the same sample order.
+The arrays `sample_names`, `read1s`, & `read2s` must have the same number of entries & must use the same sample order.
 
 ### 6. Run the complete raw-read workflow
 
@@ -207,10 +207,10 @@ java \
 
 #### Background execution on macOS
 
-For a long local run, use `nohup` to detach the process from the terminal and `caffeinate` to prevent idle sleep while macOS remains awake:
+For a long local run, use `nohup` to detach the process from the terminal & `caffeinate` to prevent idle sleep while laptop remains awake:
 
 ```bash
-cd /path/to/rMAP-Candida
+cd ~/rMAP-Candida
 
 CROMWELL_JAR="$HOME/cromwell-91.jar"
 CROMWELL_CONF="$PWD/example/cromwell.local.fifo_portable.conf"
@@ -242,7 +242,7 @@ echo "PID file: $PIDFILE"
 echo "Log file: $LOG"
 ```
 
-Closing the terminal does not stop the detached process. Closing a MacBook lid normally suspends macOS and pauses Docker/Colima, so keep the machine awake and connected to power for an uninterrupted run.
+Closing the terminal does not stop the detached process. Closing the laptop lid normally suspends the run & pauses Docker/Colima, so keep the machine awake & connected to power for an uninterrupted run.
 
 Monitor the run:
 
@@ -271,7 +271,7 @@ View the active Docker task:
 docker ps --format 'table {{.ID}}\t{{.Status}}\t{{.Image}}'
 ```
 
-### 7. Confirm successful completion and final report generation
+### 7. Confirm successful completion & final report generation
 
 For a background run, confirm that Cromwell completed successfully:
 
@@ -307,7 +307,7 @@ else
 fi
 ```
 
-Confirm that the final HTML contains the AMR and phylogeny sections:
+Confirm that the final HTML contains the AMR & phylogeny sections:
 
 ```bash
 grep -q 'id="amr"' "$REPORT" && \
@@ -326,7 +326,7 @@ grep -Eq \
   echo "Rendered phylogeny content present"
 ```
 
-If no species group meets the minimum same-species sample and reference requirements, the phylogeny section remains in the report and states why no tree was generated.
+If no species group meets the minimum same-species sample & reference requirements, the phylogeny section remains in the report & states why no tree was generated.
 
 Open the report on macOS:
 
@@ -334,7 +334,7 @@ Open the report on macOS:
 open "$REPORT"
 ```
 
-Locate sample-level and final outputs:
+Locate sample-level & final outputs:
 
 ```bash
 find cromwell-executions/rMAP_Candida \
@@ -357,7 +357,7 @@ find cromwell-executions/rMAP_Candida \( \
 \) -print
 ```
 
-A complete validation should demonstrate that rMAP-Candida starts with paired raw FASTQ files, completes de novo assembly and all enabled downstream analyses, and produces a non-empty integrated HTML report. AMR findings are genomic screening evidence and should be interpreted with species identity, validated marker catalogues, clinical metadata, and phenotypic antifungal susceptibility testing where appropriate.
+A complete validation should demonstrate that rMAP-Candida starts with paired raw FASTQ files, completes *de novo* assembly & all enabled downstream analyses & produces a non-empty integrated HTML report. AMR findings are genomic screening evidence & should be interpreted with species identity, validated marker catalogues, clinical metadata & phenotypic antifungal susceptibility testing where appropriate.
 
 ---
 
@@ -365,17 +365,23 @@ A complete validation should demonstrate that rMAP-Candida starts with paired ra
 
 ```text
 rMAP-Candida/
+├── .gitignore
 ├── README.md
 ├── rMAP_Candida.wdl
+│
 ├── docker/
-├
+│   ├── amr_chroquetas/
+│   ├── candida_refs/
+│   └── kraken2_bracken/
+│
 ├── example/
 │   ├── cromwell.local.fifo_portable.conf
-│   ├── rMAP-Candida.inputs.example.two_samples.json
+│   ├── cromwell.options.no_docker_hash_lookup.json
+│   ├── download_two_sample_test_data.sh
 │   ├── rMAP_Candida.inputs.example.json
 │   ├── rMAP_Candida_accessions.tsv
 │   └── surveillance_metadata.tsv
-├
+│
 └── docs/
     ├── assets/
     ├── reports/
@@ -391,7 +397,7 @@ rMAP-Candida/
 |---|---|---|---|---|
 | Read QC and trimming | `wdl/modules/read_qc.wdl` | fastp, FastQC, MultiQC | Adapter/quality trimming & read-level QC | `*.fastp.html`, `*.fastp.json`, MultiQC HTML |
 | Species typing | `wdl/modules/species_typing.wdl` | Kraken2, Bracken | *Candida*-focused species classification | `*.kraken2.report`, `*.bracken.tsv`, `*.top_species.tsv` |
-| Assembly and assembly QC | `wdl/modules/assembly_qc.wdl` | MEGAHIT, QUAST, Compleasm/BUSCO | De novo assembly, contiguity metrics, optional completeness | contigs FASTA, QUAST TSV, Compleasm/BUSCO summaries |
+| Assembly and assembly QC | `wdl/modules/assembly_qc.wdl` | MEGAHIT, QUAST, Compleasm/BUSCO | *De novo* assembly, contiguity metrics, optional completeness | contigs FASTA, QUAST TSV, Compleasm/BUSCO summaries |
 | AMR screening | `wdl/modules/amr.wdl` | ChroQueTas/FungAMR-derived parsing | Curated genomic antifungal-resistance marker screening | AMR summary/raw TSV and HTML |
 | Species-aware phylogeny | `wdl/modules/phylogeny.wdl` | Snippy, BCFtools, IQ-TREE2, ETE3 | Per-species core-SNP analysis & tree rendering | core SNP FASTA, Newick tree, PNG tree, group summary |
 | Reporting | `wdl/modules/reporting.wdl` | built-in report logic | Integrated surveillance report & TSV summaries | `rMAP_Candida_report.html`, summary TSVs |
@@ -457,9 +463,9 @@ If no metadata file is supplied, the workflow still runs & the report states tha
 
 ---
 
-## Containers, databases, and public access
+## Containers, databases & public access
 
-All major steps are Dockerized. Users should pull and inspect the containers before running the workflow.
+All major steps are Dockerized. Users should pull & inspect the containers before running the workflow.
 
 ### Species typing database
 
@@ -491,7 +497,7 @@ opts.k2d
 taxo.k2d
 ```
 
-The database build recipe and source-list notes should be maintained in:
+The database build recipe & source-list notes should be maintained in:
 
 ```text
 docker/kraken2_bracken/README.md
@@ -555,9 +561,9 @@ Additional outputs may include:
 
 ## Species-aware phylogenomics & diploidy/polymorphism handling
 
-rMAP-Candida does **not** combine different *Candida* species into one core-SNP tree. It first groups isolates by species and only builds a tree when enough same-species samples and a configured reference are available.
+rMAP-Candida does **not** combine different *Candida* spp. into one core-SNP tree. It first groups isolates by species & only builds a tree when enough same-species samples & a configured reference are available.
 
-This design is deliberate because *Candida* and related yeasts differ in ploidy, genome plasticity, heterozygosity, copy-number variation, aneuploidy, loss of heterozygosity, and recombination behavior. The workflow therefore reports phylogeny eligibility explicitly and treats SNP distances as descriptive genomic relatedness metrics, not direct transmission proof.
+This design is deliberate because *Candida* spp. & related yeasts differ in ploidy, genome plasticity, heterozygosity, copy-number variation, aneuploidy, loss of heterozygosity & recombination behavior. The workflow therefore reports phylogeny eligibility explicitly & treats SNP distances as descriptive genomic relatedness metrics, not direct transmission proof.
 
 Default phylogeny settings:
 
@@ -604,9 +610,9 @@ Clinically important findings should be interpreted with isolate metadata & phen
 
 ## Why WDL/Cromwell?
 
-WDL/Cromwell was selected because it provides a portable workflow description, explicit typed inputs and outputs, scatter-based parallelism for sample-level tasks, Docker runtime declarations, and execution provenance. The same workflow can be run locally for a two-sample test, on a workstation or HPC environment for larger batches, or on WDL-compatible cloud platforms.
+WDL/Cromwell was selected because it provides a portable workflow description, explicit typed inputs & outputs, scatter-based parallelism for sample-level tasks, Docker runtime declarations & execution provenance. The same workflow can be run locally for a two-sample test, on a workstation or HPC environment for larger batches, or on WDL-compatible cloud platforms.
 
-This implementation is designed to reduce installation barriers: users do not need to install each bioinformatics tool manually, because task-level dependencies are containerized and versioned.
+This implementation is designed to reduce installation barriers: users do not need to install each bioinformatics tool manually, because task-level dependencies are containerized & versioned.
 
 ---
 
@@ -626,7 +632,7 @@ Run:
 java   -Xms1g   -Xmx3g   -XX:+UseG1GC   -Dconfig.file=example/cromwell.local.fifo_portable.conf   -jar ~/cromwell-91.jar   run rMAP_Candida.wdl   --inputs example/rMAP-Candida.inputs.example.two_samples.json
 ```
 
-Do not omit `-Dconfig.file` when following the validated local instructions. The supplied configuration handles the Local/SFS backend, task concurrency, Docker resource limits, container-visible task scripts, and native `/tmp` FIFO handling.
+Do not omit `-Dconfig.file` when following the validated local instructions. The supplied configuration handles the Local/SFS backend, task concurrency, Docker resource limits, container-visible task scripts & native `/tmp` FIFO handling.
 
 ### Docker image cannot be pulled
 
@@ -668,9 +674,8 @@ This is expected when there are fewer than three same-species samples. The workf
 
 ## Suggested citation
 
-If you use this workflow, cite the repository and the major tools used in the workflow, including WDL/Cromwell, Docker, fastp, FastQC, MultiQC, Kraken2, Bracken, MEGAHIT, QUAST, Compleasm/BUSCO where enabled, ChroQueTas/FungAMR-derived resources, Snippy, IQ-TREE2, and ETE3.
+If you use this workflow, cite the repository & the major tools used in the workflow, including WDL/Cromwell, Docker, fastp, FastQC, MultiQC, Kraken2, Bracken, MEGAHIT, QUAST, Compleasm/BUSCO where enabled, ChroQueTas/FungAMR-derived resources, Snippy, IQ-TREE2, and ETE3.
 
 ```text
-rMAP-Candida: Rapid Mycological Analysis Pipeline for Candida genomic surveillance.
-https://github.com/gmboowa/rMAP-Candida
+rMAP-Candida: Rapid Mycological Analysis Pipeline for Candida genomic surveillance. https://github.com/gmboowa/rMAP-Candida
 ```
