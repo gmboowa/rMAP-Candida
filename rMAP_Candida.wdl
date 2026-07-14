@@ -1,5 +1,19 @@
 version 1.0
 
+# rMAP-Candida final reviewer-patched workflow (2026-07)
+#
+# Reviewer-critical corrections consolidated in this file:
+#   1. AMR uses a pre-built ChroQueTas/FungAMR container; no runtime conda/mamba installation.
+#   2. All reportable nonsynonymous AMR screening findings are retained, while curated
+#      resistance markers are explicitly distinguished and highlighted in the final HTML.
+#   3. Current and legacy Candida species names are normalized without favouring C. albicans.
+#   4. Species-aware variant-calling ploidy is recorded for every successful phylogeny branch.
+#   5. IQ-TREE and tree rendering produce safe fallbacks so visualization cannot prevent
+#      generation of the final integrated HTML report.
+#   6. Optional resume mode reuses completed assemblies and skips MEGAHIT.
+#
+# Local Docker/SFS execution was validated with Cromwell 91 and the supplied
+# cromwell.local.fifo_portable.conf. The WDL itself remains backend portable.
 
 workflow rMAP_Candida {
   input {
@@ -11,6 +25,14 @@ workflow rMAP_Candida {
     Boolean do_quality_control = true
     Boolean do_species_typing = true
     Boolean do_assembly = true
+
+    # Resume mode: bypass MEGAHIT and continue from existing per-sample assemblies.
+    # When true, preassembled_contigs must contain exactly one FASTA per sample,
+    # in the same order as sample_names. This is useful after a completed assembly
+    # stage when a downstream task needs to be relaunched.
+    Boolean use_preassembled_contigs = false
+    Array[File] preassembled_contigs = []
+
     Boolean do_assembly_qc = true
     Boolean do_compleasm = false
     Boolean do_busco = false  # legacy/deprecated; retained only for backward-compatible JSONs
@@ -59,6 +81,21 @@ workflow rMAP_Candida {
     String fungal_kraken2_bracken_docker = "gmboowa/rmap-myc-candida-kraken2-bracken:2026.05-db"
     String fungamr_docker = "gmboowa/rmap-myc-candida-amr:2026.07-chroquetas-v9"
     String megahit_docker = "quay.io/biocontainers/megahit:1.2.9--h5ca1c30_6"
+
+    # Portable MEGAHIT mode. Keep true for macOS Docker/Colima, virtualized CPUs,
+    # cloud VMs, Terra, and heterogeneous HPC nodes. Set false only after the
+    # MEGAHIT container test succeeds without --no-hw-accel on the target CPU.
+    Boolean megahit_disable_hw_acceleration = true
+
+    # Percentage of the task memory request passed directly to MEGAHIT.
+    # This is important for local Docker/Cromwell backends that record the WDL
+    # memory attribute but do not enforce it as a container limit.
+    Int megahit_memory_percent = 65
+
+    # MEGAHIT SdBG memory mode: 0 = minimum, 1 = moderate, >1 = use all specified memory.
+    # Minimum mode is the safest default for laptops and heterogeneous runners.
+    Int megahit_mem_flag = 0
+
     String quast_docker = "staphb/quast:5.2.0"
     String compleasm_docker = "huangnengcsu/compleasm:v0.2.7"
     String busco_docker = "ezlabgva/busco:v5.7.1_cv1"  # legacy/deprecated
@@ -66,9 +103,10 @@ workflow rMAP_Candida {
     String fastqc_docker = "staphb/fastqc:0.12.1"
     String multiqc_docker = "multiqc/multiqc:v1.24"
 
-    Int max_cpus = 8
-    Int max_memory_gb = 32
-    Int max_disk_gb = 1000
+    Int max_cpus = 2
+    Int max_memory_gb = 8
+    Int max_disk_gb = 200
+    Int fastqc_memory_mb = 1024
     Int min_read_length = 50
     Int bracken_read_length = 150
     String compleasm_lineage = "saccharomycetes"
@@ -82,11 +120,9 @@ workflow rMAP_Candida {
   Int cpu_4 = if max_cpus < 4 then max_cpus else 4
   Int cpu_8 = if max_cpus < 8 then max_cpus else 8
 
-  # rc170 safety: even if an older JSON explicitly sets
-  # rMAP_Candida.snippy_phylogeny_species = ["Candidozyma auris"], force
-  # Candida albicans into the Snippy/core branch so the current 4-sample
-  # albicans group can produce a species-specific tree.
-  Array[String] effective_snippy_phylogeny_species = flatten([snippy_phylogeny_species, ["Candida albicans"]])
+  # The configured species list is used exactly as supplied. The default includes
+  # both Candidozyma auris and Candida albicans; no species is silently forced into
+  # a branch, avoiding organism-specific bias in workflow control logic.
 
   #
   # Stage 1: per-sample read-level work and assembly.
@@ -123,6 +159,7 @@ workflow rMAP_Candida {
           read2 = analysis_read2,
           docker_image = fastqc_docker,
           cpu = max_cpus,
+          memory_mb = fastqc_memory_mb,
           memory_gb = max_memory_gb,
           disk_gb = max_disk_gb
       }
@@ -151,12 +188,22 @@ workflow rMAP_Candida {
           read1 = analysis_read1,
           read2 = analysis_read2,
           docker_image = megahit_docker,
+          disable_hw_acceleration = megahit_disable_hw_acceleration,
+          memory_percent = megahit_memory_percent,
+          mem_flag = megahit_mem_flag,
           cpu = max_cpus,
           memory_gb = max_memory_gb,
           disk_gb = max_disk_gb
       }
     }
   }
+
+  # Select either freshly generated MEGAHIT assemblies or externally supplied
+  # assemblies. In resume mode, MEGAHIT is not called and the supplied FASTAs are
+  # localized directly into downstream QUAST/Compleasm/AMR tasks.
+  Array[File] generated_contigs = select_all(ASSEMBLY.contigs_fasta)
+  Array[File] assembled_contigs = if use_preassembled_contigs then preassembled_contigs else generated_contigs
+  Boolean have_assemblies = length(assembled_contigs) > 0
 
   #
   # Stage 2: per-assembly downstream work.
@@ -169,8 +216,19 @@ workflow rMAP_Candida {
   #   call-COMPLEASM/shard-0 and call-COMPLEASM/shard-1   only if do_compleasm=true
   #   call-AMR/shard-0       and call-AMR/shard-1
   #
-  if (do_assembly) {
-    Array[File] assembled_contigs = select_all(ASSEMBLY.contigs_fasta)
+  if (have_assemblies) {
+    # Recompute lightweight assembly summaries from the selected FASTAs so the
+    # merged HTML/TSV report remains complete in both fresh and resume modes.
+    scatter (s in range(length(assembled_contigs))) {
+      call ASSEMBLY_SUMMARY_FROM_FASTA as ASSEMBLY_SUMMARY {
+        input:
+          sample_name = sample_names[s],
+          contigs = assembled_contigs[s],
+          cpu = 1,
+          memory_gb = 2,
+          disk_gb = max_disk_gb
+      }
+    }
 
     if (do_assembly_qc) {
       scatter (q in range(length(assembled_contigs))) {
@@ -280,7 +338,7 @@ workflow rMAP_Candida {
         min_variant_quality = min_variant_quality_for_phylogeny,
         core_site_min_fraction = core_site_min_fraction,
         haploid_species = haploid_phylogeny_species,
-        snippy_species = effective_snippy_phylogeny_species
+        snippy_species = snippy_phylogeny_species
     }
 
     Array[String] phylogeny_group_labels = read_lines(CANDIDA_SNIPPY_CORE_BY_SPECIES.group_labels_txt)
@@ -336,7 +394,7 @@ workflow rMAP_Candida {
       species_top_tsvs = select_all(SPECIES.top_species_tsv),
       kraken_reports = select_all(SPECIES.kraken_report),
       bracken_reports = select_all(SPECIES.bracken_report),
-      assembly_summaries = select_all(ASSEMBLY.assembly_summary_tsv),
+      assembly_summaries = select_first([ASSEMBLY_SUMMARY.assembly_summary_tsv, []]),
       quast_reports = select_first([QUAST.quast_report_tsv, []]),
       busco_summaries = BUSCO.busco_short_summary_txt,
       busco_summary_tsvs = BUSCO.busco_summary_tsv,
@@ -364,7 +422,7 @@ workflow rMAP_Candida {
     Array[File] trimmed_reads_2 = select_all(TRIM.trimmed_read2)
     File? multiqc_report = MULTIQC_REPORT.multiqc_report
     Array[File] fungal_species_summaries = select_all(SPECIES.top_species_tsv)
-    Array[File] fungal_assemblies = select_all(ASSEMBLY.contigs_fasta)
+    Array[File] fungal_assemblies = assembled_contigs
     Array[File] fungal_amr_summaries = select_first([AMR.amr_summary_tsv, []])
     File? candida_phylogeny_group_summary = CANDIDA_SNIPPY_CORE_BY_SPECIES.phylogeny_group_summary_tsv
     Array[File] candida_core_snp_alignments = select_first([CANDIDA_SNIPPY_CORE_BY_SPECIES.core_full_alignments, []])
@@ -422,19 +480,50 @@ task FASTQC {
     File read2
     String docker_image
     Int cpu
+    Int memory_mb
     Int memory_gb
     Int disk_gb
   }
 
   command <<<
     set -euo pipefail
+
     mkdir -p fastqc_out
-    fastqc -t ~{cpu} -o fastqc_out ~{read1} ~{read2}
+    LOG="~{sample_name}.fastqc.log"
+
+    if [ ~{memory_mb} -lt 512 ]; then
+      echo "ERROR: fastqc_memory_mb must be at least 512 MB; received ~{memory_mb}." | tee "${LOG}" >&2
+      exit 2
+    fi
+
+    echo "FastQC sample: ~{sample_name}" | tee "${LOG}"
+    echo "Threads: ~{cpu}" | tee -a "${LOG}"
+    echo "FastQC JVM memory per processing thread: ~{memory_mb} MB" | tee -a "${LOG}"
+
+    set +e
+    fastqc \
+      --threads ~{cpu} \
+      --memory ~{memory_mb} \
+      --outdir fastqc_out \
+      "~{read1}" "~{read2}" \
+      2>&1 | tee -a "${LOG}"
+    FASTQC_RC=${PIPESTATUS[0]}
+    set -e
+
+    if [ "${FASTQC_RC}" -ne 0 ]; then
+      echo "ERROR: FastQC failed for ~{sample_name} with return code ${FASTQC_RC}." | tee -a "${LOG}" >&2
+      find . -maxdepth 2 -type f -name 'hs_err_pid*.log' -print -exec cat {} \; 2>/dev/null | tee -a "${LOG}" || true
+      exit "${FASTQC_RC}"
+    fi
+
+    test -n "$(find fastqc_out -maxdepth 1 -type f -name '*_fastqc.html' -print -quit)"
+    test -n "$(find fastqc_out -maxdepth 1 -type f -name '*_fastqc.zip' -print -quit)"
   >>>
 
   output {
     Array[File] fastqc_reports = glob("fastqc_out/*_fastqc.html")
     Array[File] fastqc_zips = glob("fastqc_out/*_fastqc.zip")
+    File fastqc_log = "~{sample_name}.fastqc.log"
   }
 
   runtime {
@@ -669,6 +758,9 @@ task FUNGAL_ASSEMBLY {
     File read1
     File read2
     String docker_image
+    Boolean disable_hw_acceleration = true
+    Int memory_percent = 65
+    Int mem_flag = 0
     Int cpu
     Int memory_gb
     Int disk_gb
@@ -677,31 +769,98 @@ task FUNGAL_ASSEMBLY {
   command <<<
     set -euo pipefail
 
-    echo "=============================================="
-    echo "rMAP-Myc-Candida assembly using MEGAHIT"
-    echo "Sample: ~{sample_name}"
-    echo "Read 1: ~{read1}"
-    echo "Read 2: ~{read2}"
-    echo "Threads: ~{cpu}"
-    echo "=============================================="
+    SAMPLE="~{sample_name}"
+    OUTDIR="megahit_~{sample_name}"
+    LOG="~{sample_name}.megahit.log"
 
-    rm -rf megahit_~{sample_name}
+    echo "==============================================" | tee "${LOG}"
+    echo "rMAP-Candida assembly using MEGAHIT" | tee -a "${LOG}"
+    echo "Sample: ${SAMPLE}" | tee -a "${LOG}"
+    echo "Read 1: ~{read1}" | tee -a "${LOG}"
+    echo "Read 2: ~{read2}" | tee -a "${LOG}"
+    echo "Threads: ~{cpu}" | tee -a "${LOG}"
+    echo "Requested task memory: ~{memory_gb} GB" | tee -a "${LOG}"
+    echo "MEGAHIT memory percentage: ~{memory_percent}%" | tee -a "${LOG}"
+    echo "MEGAHIT mem-flag: ~{mem_flag}" | tee -a "${LOG}"
+    echo "Disable hardware acceleration: ~{disable_hw_acceleration}" | tee -a "${LOG}"
+    echo "==============================================" | tee -a "${LOG}"
 
+    rm -rf "${OUTDIR}"
+
+    # MEGAHIT creates POSIX named pipes while reading compressed FASTQ files.
+    # Docker bind mounts backed by macOS file sharing may reject mkfifo(2).
+    # Keep MEGAHIT scratch on the container's native Linux /tmp filesystem,
+    # while retaining final outputs in Cromwell's mounted execution directory.
+    MEGAHIT_TMP_BASE="$(mktemp -d "/tmp/rmap_megahit_${SAMPLE}.XXXXXX")"
+    cleanup_megahit_tmp() {
+      rm -rf "${MEGAHIT_TMP_BASE}"
+    }
+    trap cleanup_megahit_tmp EXIT
+    echo "MEGAHIT temporary base: ${MEGAHIT_TMP_BASE}" | tee -a "${LOG}"
+
+    MEMORY_PERCENT=~{memory_percent}
+    if [ "${MEMORY_PERCENT}" -lt 1 ] || [ "${MEMORY_PERCENT}" -gt 95 ]; then
+      echo "ERROR: megahit_memory_percent must be between 1 and 95; received ${MEMORY_PERCENT}." | tee -a "${LOG}" >&2
+      exit 2
+    fi
+
+    MEM_FLAG=~{mem_flag}
+    if [ "${MEM_FLAG}" -lt 0 ]; then
+      echo "ERROR: megahit_mem_flag must be zero or greater; received ${MEM_FLAG}." | tee -a "${LOG}" >&2
+      exit 2
+    fi
+
+    # Pass an absolute byte limit to MEGAHIT. Its default is 90% of all memory
+    # visible inside the container, which can exceed a task's WDL memory request
+    # on local Docker backends. Reserve the remaining percentage for decompression,
+    # the wrapper process, Docker, Cromwell, and the operating system.
+    MEGAHIT_MEMORY_BYTES=$(( ~{memory_gb} * 1024 * 1024 * 1024 * MEMORY_PERCENT / 100 ))
+    echo "MEGAHIT absolute memory cap: ${MEGAHIT_MEMORY_BYTES} bytes" | tee -a "${LOG}"
+
+    # MEGAHIT's optimized core can raise SIGILL/exit -4 when POPCNT/BMI2 are
+    # hidden or incompletely virtualized. Portable mode is therefore the default.
+    # The flag is intentionally controlled by a WDL Boolean rather than host/OS
+    # detection, because WDL tasks execute inside Linux containers on every backend.
+    HW_ACCEL_FLAG=""
+    if [ "~{disable_hw_acceleration}" = "true" ]; then
+      HW_ACCEL_FLAG="--no-hw-accel"
+      echo "MEGAHIT portable core enabled (--no-hw-accel)." | tee -a "${LOG}"
+    else
+      echo "MEGAHIT optimized hardware core enabled." | tee -a "${LOG}"
+    fi
+
+    # Capture MEGAHIT's complete diagnostic stream while preserving its true
+    # return code. This makes failures visible in both Cromwell stderr/stdout
+    # and the declared per-sample log output.
+    set +e
     megahit \
-      -1 ~{read1} \
-      -2 ~{read2} \
-      -o megahit_~{sample_name} \
+      ${HW_ACCEL_FLAG} \
+      -1 "~{read1}" \
+      -2 "~{read2}" \
+      -o "${OUTDIR}" \
       -t ~{cpu} \
-      --min-contig-len 500
+      --memory "${MEGAHIT_MEMORY_BYTES}" \
+      --mem-flag "${MEM_FLAG}" \
+      --tmp-dir "${MEGAHIT_TMP_BASE}" \
+      --min-contig-len 500 \
+      2>&1 | tee -a "${LOG}"
+    MEGAHIT_RC=${PIPESTATUS[0]}
+    set -e
 
-    if [ ! -s megahit_~{sample_name}/final.contigs.fa ]; then
-      echo "ERROR: MEGAHIT did not produce final.contigs.fa for ~{sample_name}" >&2
+    if [ "${MEGAHIT_RC}" -ne 0 ]; then
+      echo "ERROR: MEGAHIT failed for ${SAMPLE} with return code ${MEGAHIT_RC}." | tee -a "${LOG}" >&2
+      echo "For illegal-instruction failures, keep megahit_disable_hw_acceleration=true." | tee -a "${LOG}" >&2
+      exit "${MEGAHIT_RC}"
+    fi
+
+    if [ ! -s "${OUTDIR}/final.contigs.fa" ]; then
+      echo "ERROR: MEGAHIT completed without producing final.contigs.fa for ${SAMPLE}." | tee -a "${LOG}" >&2
       exit 1
     fi
 
-    cp megahit_~{sample_name}/final.contigs.fa ~{sample_name}.contigs.fasta
+    cp "${OUTDIR}/final.contigs.fa" "${SAMPLE}.contigs.fasta"
 
-    # Compute assembly summary without requiring python inside the MEGAHIT image.
+    # Compute assembly summary without requiring Python inside the MEGAHIT image.
     awk '
       /^>/ {
         if (seqlen > 0) { print seqlen }
@@ -715,17 +874,17 @@ task FUNGAL_ASSEMBLY {
       END {
         if (seqlen > 0) { print seqlen }
       }
-    ' ~{sample_name}.contigs.fasta > contig_lengths.txt
+    ' "${SAMPLE}.contigs.fasta" > contig_lengths.txt
 
     if [ ! -s contig_lengths.txt ]; then
-      printf "sample_id\tassembler\tcontigs\ttotal_bp\tn50\tlargest_contig\n" > ~{sample_name}.assembly_summary.tsv
-      printf "~{sample_name}\tMEGAHIT\t0\t0\t0\t0\n" >> ~{sample_name}.assembly_summary.tsv
+      printf "sample_id\tassembler\tcontigs\ttotal_bp\tn50\tlargest_contig\n" > "${SAMPLE}.assembly_summary.tsv"
+      printf "%s\tMEGAHIT\t0\t0\t0\t0\n" "${SAMPLE}" >> "${SAMPLE}.assembly_summary.tsv"
     else
       CONTIGS=$(wc -l < contig_lengths.txt | tr -d ' ')
       TOTAL_BP=$(awk '{s += $1} END {print s + 0}' contig_lengths.txt)
 
-      # Avoid pipefail/SIGPIPE failures from patterns such as: sort | head
-      # This keeps successful MEGAHIT assemblies from being marked failed with rc=141.
+      # Write the sorted lengths to a file rather than using sort | head, avoiding
+      # pipefail/SIGPIPE portability problems.
       sort -nr contig_lengths.txt > contig_lengths.sorted.txt
 
       LARGEST_CONTIG=$(awk 'NR == 1 {print $1}' contig_lengths.sorted.txt)
@@ -741,17 +900,20 @@ task FUNGAL_ASSEMBLY {
         END {print n50 + 0}
       ' contig_lengths.sorted.txt)
 
-      printf "sample_id\tassembler\tcontigs\ttotal_bp\tn50\tlargest_contig\n" > ~{sample_name}.assembly_summary.tsv
-      printf "~{sample_name}\tMEGAHIT\t%s\t%s\t%s\t%s\n" "${CONTIGS}" "${TOTAL_BP}" "${N50:-0}" "${LARGEST_CONTIG:-0}" >> ~{sample_name}.assembly_summary.tsv
+      printf "sample_id\tassembler\tcontigs\ttotal_bp\tn50\tlargest_contig\n" > "${SAMPLE}.assembly_summary.tsv"
+      printf "%s\tMEGAHIT\t%s\t%s\t%s\t%s\n" \
+        "${SAMPLE}" "${CONTIGS}" "${TOTAL_BP}" "${N50:-0}" "${LARGEST_CONTIG:-0}" \
+        >> "${SAMPLE}.assembly_summary.tsv"
     fi
 
-    echo "Assembly completed for ~{sample_name}"
-    cat ~{sample_name}.assembly_summary.tsv
+    echo "Assembly completed for ${SAMPLE}" | tee -a "${LOG}"
+    cat "${SAMPLE}.assembly_summary.tsv" | tee -a "${LOG}"
   >>>
 
   output {
     File contigs_fasta = "~{sample_name}.contigs.fasta"
     File assembly_summary_tsv = "~{sample_name}.assembly_summary.tsv"
+    File megahit_log = "~{sample_name}.megahit.log"
   }
 
   runtime {
@@ -759,7 +921,80 @@ task FUNGAL_ASSEMBLY {
     cpu: cpu
     memory: "~{memory_gb} GB"
     disks: "local-disk ~{disk_gb} HDD"
-    continueOnReturnCode: [0, 141]
+  }
+}
+
+
+task ASSEMBLY_SUMMARY_FROM_FASTA {
+  input {
+    String sample_name
+    File contigs
+    Int cpu
+    Int memory_gb
+    Int disk_gb
+  }
+
+  command <<<
+    set -euo pipefail
+
+    SAMPLE="~{sample_name}"
+    FASTA="~{contigs}"
+    OUT="${SAMPLE}.assembly_summary.tsv"
+
+    if [ ! -s "${FASTA}" ]; then
+      echo "ERROR: preassembled FASTA is missing or empty for ${SAMPLE}: ${FASTA}" >&2
+      exit 2
+    fi
+
+    awk '
+      /^>/ {
+        if (seqlen > 0) { print seqlen }
+        seqlen = 0
+        next
+      }
+      {
+        gsub(/[[:space:]]/, "", $0)
+        seqlen += length($0)
+      }
+      END {
+        if (seqlen > 0) { print seqlen }
+      }
+    ' "${FASTA}" > contig_lengths.txt
+
+    if [ ! -s contig_lengths.txt ]; then
+      echo "ERROR: no FASTA sequences were parsed for ${SAMPLE}: ${FASTA}" >&2
+      exit 3
+    fi
+
+    CONTIGS=$(wc -l < contig_lengths.txt | tr -d ' ')
+    TOTAL_BP=$(awk '{s += $1} END {print s + 0}' contig_lengths.txt)
+    sort -nr contig_lengths.txt > contig_lengths.sorted.txt
+    LARGEST_CONTIG=$(awk 'NR == 1 {print $1}' contig_lengths.sorted.txt)
+    HALF_BP=$(( (TOTAL_BP + 1) / 2 ))
+    N50=$(awk -v half="${HALF_BP}" '
+      BEGIN {s = 0; n50 = 0}
+      {
+        s += $1
+        if (n50 == 0 && s >= half) { n50 = $1 }
+      }
+      END {print n50 + 0}
+    ' contig_lengths.sorted.txt)
+
+    printf "sample_id\tassembler\tcontigs\ttotal_bp\tn50\tlargest_contig\n" > "${OUT}"
+    printf "%s\tMEGAHIT_preassembled\t%s\t%s\t%s\t%s\n" \
+      "${SAMPLE}" "${CONTIGS}" "${TOTAL_BP}" "${N50:-0}" "${LARGEST_CONTIG:-0}" >> "${OUT}"
+
+    test -s "${OUT}"
+  >>>
+
+  output {
+    File assembly_summary_tsv = "~{sample_name}.assembly_summary.tsv"
+  }
+
+  runtime {
+    cpu: cpu
+    memory: "~{memory_gb} GB"
+    disks: "local-disk ~{disk_gb} HDD"
   }
 }
 
@@ -1153,7 +1388,6 @@ task FUNGAL_AMR_CHARACTERIZATION {
       MINIPROT_MISSING=1
       echo "DEPENDENCY_MISSING: miniprot is not available in the configured AMR Docker image." >> "${LOG_OUT}"
     fi
-    fi
 
     # -------------------------------------------------------------------------
     # v5 FIX: use a ChroQueTas-enabled AMR Docker image and keep shell-only parsing.
@@ -1442,18 +1676,21 @@ EOF_CHROQ_SHIM
       MARKER_LINE=$(tail -n +2 "${RAW_OUT}"         | grep -Eiv 'chroquetas.list_species|species_for_chroquetas|scanner.stdout|scanner.stderr|no hit|no marker|none detected|not detected|negative|absence|source_file'         | grep -Ei 'ERG11|ERG1|ERG2|ERG3|ERG4|ERG5|ERG6|TAC1|TAC1B|UPC2|MRR1|PDR1|CDR1|CDR2|SNQ2|MDR1|FKS1|FKS2|HS1|FCY1|FCY2|FUR1|azole|echinocandin|amphotericin|flucytosine|fluconazole|voriconazole|posaconazole|itraconazole|caspofungin|micafungin|anidulafungin|resistan|mutation|variant|hotspot|copy.number|aneuploid|LOH|loss.of.heterozygosity'         | head -n 1)
     fi
 
-    # rc151 marker parser hardening:
-    # ChroQueTas can successfully detect a curated FungAMR marker but the broad
-    # text harvester may only report it as a generic candidate. Parse the actual
-    # ChroQueTas marker tables first, then fall back to the older text heuristic.
-    PARSED_GENE=""
-    PARSED_MUTATION=""
-    PARSED_EFFECT=""
-    PARSED_DRUGS=""
-    PARSED_SOURCE=""
-    PARSED_EVIDENCE=""
-    PARSED_DRUG_CLASS="azole/other"
-    PARSED_DRUG="fluconazole/other"
+    # Final reviewer patch: comprehensive multi-finding AMR parser.
+    #
+    # ChroQueTas emits one per-protein TSV for each screened antifungal target.
+    # Earlier workflow revisions retained only the first curated marker row. This
+    # parser now retains every nonsynonymous substitution from every per-protein
+    # output, classifies curated FungAMR markers separately from additional
+    # screening findings, and records screened targets with no reportable amino-
+    # acid substitution. Thus ERG11/Cyp51 Y132F and FCY1 S70R can coexist as
+    # separate rows when both are present.
+    PARSED_ROWS="${SAMPLE}.fungal_amr.parsed_findings.tsv"
+    VARIANT_ROWS="${SAMPLE}.fungal_amr.variant_findings.tsv"
+    SCREENED_GENE_ROWS="${SAMPLE}.fungal_amr.screened_genes.tsv"
+    : > "${PARSED_ROWS}"
+    : > "${VARIANT_ROWS}"
+    : > "${SCREENED_GENE_ROWS}"
 
     parse_drug_class_and_label() {
       drug_text="$1"
@@ -1478,74 +1715,131 @@ EOF_CHROQ_SHIM
       fi
       [ -n "$classes" ] || classes="antifungal"
       [ -n "$labels" ] || labels="species-aware antifungal panel"
-      printf "%s	%s\n" "$classes" "$labels"
+      printf "%s\t%s\n" "$classes" "$labels"
     }
 
-    # Preferred parser: per-protein ChroQueTas TSV files. These retain exact
-    # Position, Reference AA, Query AA, Result, and Fungicides columns.
-    PARSED_ROW=$(find amr_out -type f -name "${SAMPLE}.contigs.ChroQueTaS.*.tsv" ! -name '*AMR*' -print 2>/dev/null | sort | while IFS= read -r f; do
-      awk -v f="$f" '
-        BEGIN { FS="[ 	]+"; OFS="	" }
-        NR > 1 && $0 ~ /FungAMR[ 	]+MUTATION/ {
-          gene=f
-          sub(/^.*ChroQueTaS\./, "", gene)
-          sub(/\.[0-9]+\.tsv$/, "", gene)
+    # Preferred source: all per-protein ChroQueTas TSVs. A row is treated as a
+    # nonsynonymous substitution when the first three fields resemble position,
+    # reference amino acid, and alternate amino acid and ref != alt. Known/curated
+    # resistance annotations remain explicitly labelled as curated markers.
+    find amr_out -type f \
+      -name "${SAMPLE}.contigs.ChroQueTaS.*.tsv" \
+      ! -name '*AMR*' -print 2>/dev/null \
+      | sort \
+      | while IFS= read -r f; do
+          gene=$(basename "$f")
+          gene=${gene#${SAMPLE}.contigs.ChroQueTaS.}
+          gene=$(printf "%s" "$gene" | sed -E 's/\.[0-9]+\.tsv$//; s/\.tsv$//')
+          [ -n "$gene" ] || gene="Unknown_gene"
 
-          # ChroQueTas per-protein TSVs can appear whitespace-delimited rather
-          # than strict tab-delimited in Cromwell outputs. Parse both forms.
-          # Expected row:
-          # Position Reference Query Result Fungicides
-          # 132      Y         F     FungAMR MUTATION Fluconazole(...)
-          pos=$1
-          ref=$2
-          qry=$3
-          eff=$4 " " $5
-          drugs=""
-          for (i=6; i<=NF; i++) {
-            drugs = drugs (drugs=="" ? "" : " ") $i
-          }
-          if (drugs == "") drugs="NA"
-          mut=ref pos qry
-          print gene, mut, eff, drugs, f ":" $0
-          exit
-        }
-      ' "$f"
-    done | head -n 1)
+          # Record every target file. This is a screening-target inventory, not
+          # evidence of phenotypic resistance.
+          printf "%s\t%s\n" "$gene" "$f" >> "${SCREENED_GENE_ROWS}"
 
-    # Fallback parser: consolidated ChroQueTas AMR summary files.
-    if [ -z "${PARSED_ROW}" ]; then
+          awk -v f="$f" -v gene="$gene" '
+            BEGIN { FS="[ \t]+"; OFS="\t" }
+            NR > 1 && NF >= 3 {
+              pos=$1; ref=$2; alt=$3
+              if (pos !~ /^[0-9]+$/) next
+              if (ref == "" || alt == "" || ref == alt) next
+              if (ref !~ /^[A-Za-z*?-]+$/ || alt !~ /^[A-Za-z*?-]+$/) next
+
+              annotation=""
+              for (i=4; i<=NF; i++) annotation = annotation (annotation=="" ? "" : " ") $i
+              raw=$0
+              gsub(/\t/, " ", raw); gsub(/\r/, " ", raw)
+              mutation=ref pos alt
+
+              annotation_lc=tolower(annotation " " raw)
+              if (annotation_lc ~ /fungamr[ ]+mutation|curated|known[ ]+resistance|resistance[ _-]*associated|hotspot/) {
+                finding_type="curated_resistance_marker"
+                effect="Curated FungAMR mutation"
+              } else {
+                finding_type="nonsynonymous_screening_finding"
+                effect="Additional nonsynonymous substitution"
+              }
+              if (annotation == "") annotation="No drug annotation supplied by ChroQueTas"
+              print gene, mutation, effect, annotation, f ":" raw, finding_type
+            }
+          ' "$f" >> "${VARIANT_ROWS}"
+        done
+
+    # Fallback source: consolidated ChroQueTas/FungAMR AMR summary files. These
+    # files generally contain curated marker rows, and all rows are retained.
+    if [ ! -s "${VARIANT_ROWS}" ]; then
       for f in \
         "amr_out/${SAMPLE}.ChroQueTas.AMR_summary.tsv" \
         "amr_out/${SAMPLE}.ChroQueTas/${SAMPLE}.contigs.ChroQueTaS.AMR_summary.txt" \
         "amr_out/${SAMPLE}.ChroQueTas/${SAMPLE}.contigs.ChroQueTaS.AMR_summary.tsv"; do
         if [ -s "$f" ]; then
-          PARSED_ROW=$(awk -v f="$f" '
-            NR > 1 && NF >= 6 {
-              gene=$1; pos=$3; ref=$4; qry=$5; drugs=$6
-              for (i=7; i<=NF; i++) drugs=drugs " " $i
-              mut=ref pos qry
-              print gene "\t" mut "\tFungAMR MUTATION\t" drugs "\t" f ":" $0
-              exit
+          awk -v f="$f" '
+            BEGIN { FS="[ \t]+"; OFS="\t" }
+            NR > 1 && NF >= 5 {
+              gene=$1; pos=$3; ref=$4; alt=$5
+              if (gene=="" || pos !~ /^[0-9]+$/ || ref=="" || alt=="" || ref==alt) next
+              annotation=""
+              for (i=6; i<=NF; i++) annotation=annotation (annotation=="" ? "" : " ") $i
+              if (annotation=="") annotation="FungAMR consolidated marker summary"
+              raw=$0; gsub(/\t/, " ", raw); gsub(/\r/, " ", raw)
+              print gene, ref pos alt, "Curated FungAMR mutation", annotation, f ":" raw, "curated_resistance_marker"
             }
-          ' "$f" | head -n 1)
-          [ -n "${PARSED_ROW}" ] && break
+          ' "$f" >> "${VARIANT_ROWS}"
         fi
       done
     fi
 
-    if [ -n "${PARSED_ROW}" ]; then
-      PARSED_GENE=$(printf "%s" "${PARSED_ROW}" | awk -F '\t' '{print $1}')
-      PARSED_MUTATION=$(printf "%s" "${PARSED_ROW}" | awk -F '\t' '{print $2}')
-      PARSED_EFFECT=$(printf "%s" "${PARSED_ROW}" | awk -F '\t' '{print $3}')
-      PARSED_DRUGS=$(printf "%s" "${PARSED_ROW}" | awk -F '\t' '{print $4}')
-      PARSED_SOURCE=$(printf "%s" "${PARSED_ROW}" | awk -F '\t' '{print $5}' | tr '\r\n' ' ' | cut -c1-700)
-      PARSED_EVIDENCE="FungAMR curated marker detected by ChroQueTas"
-      DRUG_PAIR=$(parse_drug_class_and_label "${PARSED_DRUGS}")
-      PARSED_DRUG_CLASS=$(printf "%s" "${DRUG_PAIR}" | awk -F '\t' '{print $1}')
-      PARSED_DRUG=$(printf "%s" "${DRUG_PAIR}" | awk -F '\t' '{print $2}')
-      echo "Parsed exact ChroQueTas marker: gene=${PARSED_GENE}; mutation=${PARSED_MUTATION}; effect=${PARSED_EFFECT}; drugs=${PARSED_DRUGS}" >> "${LOG_OUT}"
-    else
-      echo "No exact ChroQueTas FungAMR marker row parsed; using scanner status fallback." >> "${LOG_OUT}"
+    # Deduplicate variant findings while preserving distinct mutations in the same
+    # gene (e.g. ERG11 Y132F plus FCY1 S70R).
+    if [ -s "${VARIANT_ROWS}" ]; then
+      awk -F '\t' 'NF >= 6 { key=tolower($1) FS $2 FS $6; if (!seen[key]++) print }' \
+        "${VARIANT_ROWS}" > "${VARIANT_ROWS}.deduplicated"
+      mv "${VARIANT_ROWS}.deduplicated" "${VARIANT_ROWS}"
+    fi
+
+    # Add one inventory row for each screened target that has no nonsynonymous
+    # finding. The wording deliberately avoids calling such rows susceptible.
+    if [ -s "${SCREENED_GENE_ROWS}" ]; then
+      awk -F '\t' '!seen[tolower($1)]++ {print}' "${SCREENED_GENE_ROWS}" \
+        > "${SCREENED_GENE_ROWS}.deduplicated"
+      mv "${SCREENED_GENE_ROWS}.deduplicated" "${SCREENED_GENE_ROWS}"
+
+      while IFS=$(printf '\t') read -r SCREEN_GENE SCREEN_SOURCE; do
+        [ -n "${SCREEN_GENE}" ] || continue
+        if ! awk -F '\t' -v g="${SCREEN_GENE}" 'tolower($1)==tolower(g){found=1} END{exit(found?0:1)}' "${VARIANT_ROWS}"; then
+          printf "%s\tNo nonsynonymous mutation reported\tGene target screened\tNA\t%s\tgene_target_screened_no_nonsynonymous_variant\n" \
+            "${SCREEN_GENE}" "${SCREEN_SOURCE}" >> "${PARSED_ROWS}"
+        fi
+      done < "${SCREENED_GENE_ROWS}"
+    fi
+
+    [ -s "${VARIANT_ROWS}" ] && cat "${VARIANT_ROWS}" >> "${PARSED_ROWS}"
+
+    # Stable ordering: curated markers first, then other nonsynonymous findings,
+    # then screened targets without a reportable substitution.
+    if [ -s "${PARSED_ROWS}" ]; then
+      awk -F '\t' 'BEGIN{OFS="\t"}
+        $6=="curated_resistance_marker" {rank=1}
+        $6=="nonsynonymous_screening_finding" {rank=2}
+        $6=="gene_target_screened_no_nonsynonymous_variant" {rank=3}
+        {print rank,$0}' "${PARSED_ROWS}" \
+        | sort -t "$(printf '\t')" -k1,1n -k2,2f -k3,3V \
+        | cut -f2- > "${PARSED_ROWS}.sorted"
+      mv "${PARSED_ROWS}.sorted" "${PARSED_ROWS}"
+    fi
+
+    PARSED_FINDING_COUNT=$(awk 'NF > 0 {n++} END {print n+0}' "${PARSED_ROWS}" 2>/dev/null)
+    PARSED_CURATED_COUNT=$(awk -F '\t' '$6=="curated_resistance_marker"{n++} END{print n+0}' "${PARSED_ROWS}" 2>/dev/null)
+    PARSED_SCREENING_COUNT=$(awk -F '\t' '$6=="nonsynonymous_screening_finding"{n++} END{print n+0}' "${PARSED_ROWS}" 2>/dev/null)
+    PARSED_GENE_ONLY_COUNT=$(awk -F '\t' '$6=="gene_target_screened_no_nonsynonymous_variant"{n++} END{print n+0}' "${PARSED_ROWS}" 2>/dev/null)
+
+    echo "AMR rows retained: ${PARSED_FINDING_COUNT}" >> "${LOG_OUT}"
+    echo "Curated resistance markers: ${PARSED_CURATED_COUNT}" >> "${LOG_OUT}"
+    echo "Additional nonsynonymous screening findings: ${PARSED_SCREENING_COUNT}" >> "${LOG_OUT}"
+    echo "Screened targets without a reported nonsynonymous change: ${PARSED_GENE_ONLY_COUNT}" >> "${LOG_OUT}"
+    if [ "${PARSED_FINDING_COUNT}" -gt 0 ]; then
+      while IFS= read -r parsed_line; do
+        echo "Retained AMR finding: ${parsed_line}" >> "${LOG_OUT}"
+      done < "${PARSED_ROWS}"
     fi
 
     printf "sample_id\tspecies\tdrug_class\tdrug\tgene_or_status\tmutation\teffect\tevidence_level\tinterpretation\n" > "${SUMMARY_OUT}"
@@ -1574,39 +1868,102 @@ EOF_CHROQ_SHIM
         printf "%s\t%s\tazole/other\tfluconazole/other\tSpecies unsupported by AMR scanner\tNA\tNA\tUNSUPPORTED_SPECIES\tThe AMR scanner did not screen this isolate because the mapped species was not available in the installed ChroQueTas/FungAMR screen list. This is not a biological no-hit and not a susceptible call. Raw evidence: %s\n" \
           "${SAMPLE}" "${SPECIES}" "${CLEAN_UNSUPPORTED}" >> "${SUMMARY_OUT}"
       fi
-    elif [ -n "${PARSED_GENE}" ]; then
-      CLEAN_SOURCE=$(printf "%s" "${PARSED_SOURCE}" | tr '\t\r\n' '   ' | cut -c1-650)
-      CLEAN_DRUGS=$(printf "%s" "${PARSED_DRUGS}" | tr '\t\r\n' '   ' | cut -c1-350)
-      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tCurated ChroQueTas/FungAMR marker detected: %s %s (%s). Drug evidence from ChroQueTas: %s. Source: %s\n" \
-        "${SAMPLE}" "${SPECIES}" "${PARSED_DRUG_CLASS}" "${PARSED_DRUG}" "${PARSED_GENE}" "${PARSED_MUTATION}" "${PARSED_EFFECT}" "${PARSED_EVIDENCE}" "${PARSED_GENE}" "${PARSED_MUTATION}" "${PARSED_EFFECT}" "${CLEAN_DRUGS}" "${CLEAN_SOURCE}" >> "${SUMMARY_OUT}"
+    elif [ "${PARSED_FINDING_COUNT}" -gt 0 ]; then
+      TAB=$(printf '\t')
+      while IFS="${TAB}" read -r PARSED_GENE PARSED_MUTATION PARSED_EFFECT PARSED_DRUGS PARSED_SOURCE PARSED_FINDING_TYPE; do
+        [ -n "${PARSED_GENE}" ] || continue
+        [ -n "${PARSED_MUTATION}" ] || PARSED_MUTATION="NA"
+        [ -n "${PARSED_EFFECT}" ] || PARSED_EFFECT="NA"
+        [ -n "${PARSED_DRUGS}" ] || PARSED_DRUGS="NA"
+        [ -n "${PARSED_SOURCE}" ] || PARSED_SOURCE="ChroQueTas output"
+        [ -n "${PARSED_FINDING_TYPE}" ] || PARSED_FINDING_TYPE="nonsynonymous_screening_finding"
+
+        # Display the clinically familiar ERG11 name while retaining the exact
+        # Cyp51/Cyp51-I alias emitted by ChroQueTas.
+        GENE_LC=$(printf "%s" "${PARSED_GENE}" | tr '[:upper:]' '[:lower:]')
+        case "${GENE_LC}" in
+          cyp51*|erg11*)
+            if printf "%s" "${PARSED_GENE}" | grep -Eiq '^ERG11$'; then
+              DISPLAY_GENE="ERG11 (Cyp51)"
+            else
+              DISPLAY_GENE="ERG11 (${PARSED_GENE})"
+            fi
+            ;;
+          *) DISPLAY_GENE="${PARSED_GENE}" ;;
+        esac
+
+        DRUG_PAIR=$(parse_drug_class_and_label "${PARSED_DRUGS}")
+        PARSED_DRUG_CLASS=$(printf "%s" "${DRUG_PAIR}" | awk -F '\t' '{print $1}')
+        PARSED_DRUG=$(printf "%s" "${DRUG_PAIR}" | awk -F '\t' '{print $2}')
+
+        CLEAN_GENE=$(printf "%s" "${DISPLAY_GENE}" | tr '\t\r\n' '   ' | cut -c1-200)
+        CLEAN_MUTATION=$(printf "%s" "${PARSED_MUTATION}" | tr '\t\r\n' '   ' | cut -c1-120)
+        CLEAN_EFFECT=$(printf "%s" "${PARSED_EFFECT}" | tr '\t\r\n' '   ' | cut -c1-250)
+        CLEAN_DRUGS=$(printf "%s" "${PARSED_DRUGS}" | tr '\t\r\n' '   ' | cut -c1-400)
+        CLEAN_SOURCE=$(printf "%s" "${PARSED_SOURCE}" | tr '\t\r\n' '   ' | cut -c1-700)
+
+        case "${PARSED_FINDING_TYPE}" in
+          curated_resistance_marker)
+            PARSED_EVIDENCE="curated_resistance_marker"
+            INTERPRETATION="Curated ChroQueTas/FungAMR resistance-associated marker detected: ${CLEAN_GENE} ${CLEAN_MUTATION}. Scanner annotation: ${CLEAN_DRUGS}. Source: ${CLEAN_SOURCE}"
+            ;;
+          nonsynonymous_screening_finding)
+            PARSED_EVIDENCE="nonsynonymous_screening_finding_not_curated"
+            INTERPRETATION="Additional nonsynonymous substitution detected in an antifungal-resistance screening gene: ${CLEAN_GENE} ${CLEAN_MUTATION}. This row is listed for completeness but is not automatically interpreted as a validated resistance determinant. Review species-specific literature, catalogues, and phenotype. Scanner annotation: ${CLEAN_DRUGS}. Source: ${CLEAN_SOURCE}"
+            ;;
+          gene_target_screened_no_nonsynonymous_variant)
+            PARSED_EVIDENCE="gene_target_screened_no_nonsynonymous_variant"
+            PARSED_DRUG_CLASS="antifungal"
+            PARSED_DRUG="species-aware antifungal panel"
+            INTERPRETATION="The ${CLEAN_GENE} target was included in the ChroQueTas/FungAMR screen, but no nonsynonymous substitution was reported in its per-protein output. This is not a susceptible call. Source: ${CLEAN_SOURCE}"
+            ;;
+          *)
+            PARSED_EVIDENCE="unclassified_amr_screening_finding"
+            INTERPRETATION="AMR screening finding retained from ChroQueTas output: ${CLEAN_GENE} ${CLEAN_MUTATION}. Source: ${CLEAN_SOURCE}"
+            ;;
+        esac
+
+        CLEAN_INTERPRETATION=$(printf "%s" "${INTERPRETATION}" | tr '\t\r\n' '   ' | cut -c1-1800)
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+          "${SAMPLE}" "${SPECIES}" "${PARSED_DRUG_CLASS}" "${PARSED_DRUG}" "${CLEAN_GENE}" "${CLEAN_MUTATION}" "${CLEAN_EFFECT}" "${PARSED_EVIDENCE}" "${CLEAN_INTERPRETATION}" >> "${SUMMARY_OUT}"
+      done < "${PARSED_ROWS}"
     elif [ -n "${MARKER_LINE}" ]; then
       CLEAN_MARKER=$(printf "%s" "${MARKER_LINE}" | tr '\t\r\n' '   ' | cut -c1-600)
-      printf "%s\t%s\tazole/other\tfluconazole/other\tCandidate AMR marker\tSee raw TSV\tNA\tscanner_detected_candidate_marker\tThe AMR scanner produced text consistent with a possible curated resistance marker, but rc151 could not parse an exact ChroQueTas marker row. Review fungal_amr.raw.tsv and fungal_amr.log for the exact record: %s\n" \
+      printf "%s\t%s\tazole/other\tfluconazole/other\tCandidate AMR marker\tSee raw TSV\tNA\tscanner_detected_candidate_marker\tThe AMR scanner produced text consistent with a possible curated resistance marker, but the exact ChroQueTas marker rows could not be parsed. Review fungal_amr.raw.tsv and fungal_amr.log for the exact record: %s\n" \
         "${SAMPLE}" "${SPECIES}" "${CLEAN_MARKER}" >> "${SUMMARY_OUT}"
-
     else
       printf "%s\t%s\tazole/echinocandin/polyene/flucytosine\tspecies-aware antifungal panel\tNo curated marker detected\tNA\tNA\tSCANNER_COMPLETED_NO_CURATED_MARKER_VARIANT_SCREEN_RECOMMENDED\tThe FungAMR/ChroQueTas wrapper completed and no curated genomic AMR marker was detected in the harvested output. This is not a susceptible call. For this species, rc146 flags the following resistance loci/mechanisms for variant-aware follow-up: %s. Phenotypic resistance may involve target-gene SNPs, promoter/regulatory changes, efflux regulation, copy-number change, LOH/aneuploidy, or markers absent from the installed database.\n" \
         "${SAMPLE}" "${SPECIES}" "${CANDIDA_AMR_PANEL}" >> "${SUMMARY_OUT}"
     fi
 
-    # Build a small standalone HTML using shell only, preserving the parsed marker fields.
-    OUT_SPECIES=$(awk -F '\t' 'NR==2 {print $2}' "${SUMMARY_OUT}" 2>/dev/null)
-    OUT_DRUG_CLASS=$(awk -F '\t' 'NR==2 {print $3}' "${SUMMARY_OUT}" 2>/dev/null)
-    OUT_DRUG=$(awk -F '\t' 'NR==2 {print $4}' "${SUMMARY_OUT}" 2>/dev/null)
-    STATUS=$(awk -F '\t' 'NR==2 {print $5}' "${SUMMARY_OUT}" 2>/dev/null)
-    OUT_MUTATION=$(awk -F '\t' 'NR==2 {print $6}' "${SUMMARY_OUT}" 2>/dev/null)
-    OUT_EFFECT=$(awk -F '\t' 'NR==2 {print $7}' "${SUMMARY_OUT}" 2>/dev/null)
-    EVIDENCE=$(awk -F '\t' 'NR==2 {print $8}' "${SUMMARY_OUT}" 2>/dev/null)
-    INTERP=$(awk -F '\t' 'NR==2 {print $9}' "${SUMMARY_OUT}" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-    cat > "${HTML_OUT}" <<EOF_AMR_HTML
+    # Build a standalone HTML table containing every summary row, rather than
+    # showing only NR==2. This keeps multiple markers visible in both the TSV and
+    # the per-sample HTML report.
+    {
+      cat <<'EOF_AMR_HTML_HEADER'
 <html><body>
 <h3>Fungal AMR summary</h3>
 <table border="1" cellpadding="4" cellspacing="0">
 <tr><th>sample_id</th><th>species</th><th>drug_class</th><th>drug</th><th>gene_or_status</th><th>mutation</th><th>effect</th><th>evidence_level</th><th>interpretation</th></tr>
-<tr><td>${SAMPLE}</td><td>${OUT_SPECIES}</td><td>${OUT_DRUG_CLASS}</td><td>${OUT_DRUG}</td><td>${STATUS}</td><td>${OUT_MUTATION}</td><td>${OUT_EFFECT}</td><td>${EVIDENCE}</td><td>${INTERP}</td></tr>
+EOF_AMR_HTML_HEADER
+      awk -F '\t' '
+        function esc(value) {
+          gsub(/&/, "\\&amp;", value)
+          gsub(/</, "\\&lt;", value)
+          gsub(/>/, "\\&gt;", value)
+          return value
+        }
+        NR > 1 {
+          for (i=1; i<=9; i++) $i=esc($i)
+          printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $1,$2,$3,$4,$5,$6,$7,$8,$9
+        }
+      ' "${SUMMARY_OUT}"
+      cat <<'EOF_AMR_HTML_FOOTER'
 </table>
+<p><strong>Interpretation note:</strong> Detected markers are genomic screening evidence and must not be interpreted as phenotypic susceptibility results without appropriate validation.</p>
 </body></html>
-EOF_AMR_HTML
+EOF_AMR_HTML_FOOTER
+    } > "${HTML_OUT}"
 
     # Final guard: Cromwell must always find every declared output.
     [ -s "${SUMMARY_OUT}" ] || printf "sample_id\tspecies\tdrug_class\tdrug\tgene_or_status\tmutation\teffect\tevidence_level\tinterpretation\n%s\tNA\tazole/other\tfluconazole/other\tOutput guard\tNA\tNA\tOUTPUT_GUARD\tSummary output was missing or empty and was recreated by final guard.\n" "${SAMPLE}" > "${SUMMARY_OUT}"
@@ -1756,6 +2113,17 @@ requested_w = int('~{width}')
 requested_h = int('~{height}')
 
 newick_text = tree_path.read_text(errors="replace").strip() if tree_path.exists() else ""
+
+# Create the mandatory cleaned-Newick output immediately.  If ETE/Qt later
+# fails, Cromwell still receives a valid tree file and the reporting task can
+# continue.  A successful ETE parse overwrites this copy below.
+if newick_text:
+    cleaned_tree.write_text(newick_text.rstrip() + "\n")
+else:
+    cleaned_tree.write_text(
+        "(Tree_rendering_unavailable_A:0.0,Tree_rendering_unavailable_B:0.0);\n"
+    )
+
 has_internal_support_labels = bool(re.search(r"\)([0-9]+(?:\.[0-9]+)?(?:/[0-9]+(?:\.[0-9]+)?)?)(?=[:),;])", newick_text))
 
 species_parts = species_label.split()
@@ -1827,8 +2195,41 @@ def looks_blank_png(path, min_bytes=9000):
         return False
 
 
+def _png_chunk(tag, payload):
+    return (
+        struct.pack(">I", len(payload))
+        + tag
+        + payload
+        + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+    )
+
+
+def write_basic_valid_png(path):
+    """Write a valid, visibly non-blank PNG using only the Python standard library."""
+    W, H = 1000, 600
+    rows = []
+    for y in range(H):
+        row = bytearray([0])  # PNG filter byte
+        for x in range(W):
+            border = x < 8 or x >= W - 8 or y < 8 or y >= H - 8
+            line1 = 80 <= y < 92 and 70 <= x < W - 70
+            line2 = 150 <= y < 160 and 130 <= x < W - 130
+            line3 = 240 <= y < 250 and 200 <= x < W - 200
+            if border or line1 or line2 or line3:
+                row.extend((30, 30, 30))
+            else:
+                row.extend((255, 255, 255))
+        rows.append(bytes(row))
+    raw = b"".join(rows)
+    png = b"\x89PNG\r\n\x1a\n"
+    png += _png_chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
+    png += _png_chunk(b"IDAT", zlib.compress(raw, 9))
+    png += _png_chunk(b"IEND", b"")
+    Path(path).write_bytes(png)
+
+
 def draw_fallback_png(reason):
-    """Robust non-empty fallback. This is only used if ETE/Qt fails."""
+    """Write a valid non-empty fallback when ETE/Qt rendering is unavailable."""
     try:
         from PIL import Image, ImageDraw, ImageFont
         W = max(1800, requested_w)
@@ -1869,8 +2270,9 @@ def draw_fallback_png(reason):
         d.line((90, H-90, 230, H-90), fill="black", width=3)
         d.text((90, H-75), "not to scale", fill="black", font=note_font)
         img.save(out_img)
-    except Exception:
-        Path(out_img).write_bytes(b"fallback render failed\n")
+    except Exception as pil_error:
+        log_lines.append(f"Pillow fallback failed: {pil_error}")
+        write_basic_valid_png(out_img)
 
 
 log_lines = []
@@ -2068,10 +2470,147 @@ except Exception as e:
     log_lines.append(traceback.format_exc())
     draw_fallback_png(str(e))
 
+# Final postconditions: all mandatory WDL outputs must exist and be non-empty,
+# even when ETE/Qt fails.  This prevents tree visualization from blocking the
+# downstream integrated HTML report.
+if not cleaned_tree.exists() or cleaned_tree.stat().st_size == 0:
+    if newick_text:
+        cleaned_tree.write_text(newick_text.rstrip() + "\n")
+    else:
+        cleaned_tree.write_text(
+            "(Tree_rendering_unavailable_A:0.0,Tree_rendering_unavailable_B:0.0);\n"
+        )
+
+if not out_img.exists() or out_img.stat().st_size < 100:
+    draw_fallback_png("tree image was missing or empty after rendering")
+
+log_lines += [
+    f"cleaned_newick={cleaned_tree}",
+    f"cleaned_newick_bytes={cleaned_tree.stat().st_size if cleaned_tree.exists() else 0}",
+    f"final_image={out_img}",
+    f"final_image_bytes={out_img.stat().st_size if out_img.exists() else 0}",
+]
 write_log(log_lines)
 PY_RENDER
 
-    python3 tree_visualization/render_tree.py
+    # Do not allow an ETE/Qt/Python rendering exception to abort the workflow.
+    # The Python script normally creates all fallbacks itself.  The shell-level
+    # guard below handles even an unexpected interpreter/script failure.
+    if ! python3 tree_visualization/render_tree.py; then
+      cp tree_visualization/input.treefile \
+        tree_visualization/render_failure.core_snp_tree.cleaned.nwk
+
+      python3 - <<'PY_SHELL_FALLBACK'
+from pathlib import Path
+import struct, zlib
+
+def chunk(tag, payload):
+    return (struct.pack(">I", len(payload)) + tag + payload +
+            struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF))
+
+W, H = 1000, 600
+rows = []
+for y in range(H):
+    row = bytearray([0])
+    for x in range(W):
+        dark = (x < 8 or x >= W - 8 or y < 8 or y >= H - 8 or
+                (80 <= y < 92 and 70 <= x < W - 70) or
+                (150 <= y < 160 and 130 <= x < W - 130) or
+                (240 <= y < 250 and 200 <= x < W - 200))
+        row.extend((30, 30, 30) if dark else (255, 255, 255))
+    rows.append(bytes(row))
+raw = b"".join(rows)
+png = b"\x89PNG\r\n\x1a\n"
+png += chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
+png += chunk(b"IDAT", zlib.compress(raw, 9))
+png += chunk(b"IEND", b"")
+Path("tree_visualization/render_failure.core_snp_tree.png").write_bytes(png)
+PY_SHELL_FALLBACK
+
+      printf '%s\n' \
+        'Primary render script exited non-zero.' \
+        'A valid Newick copy and fallback PNG were generated so report merging can continue.' \
+        > tree_visualization/render_failure.tree_render.log
+    fi
+
+    # Independent output assertions.  These create generic fallbacks only if a
+    # matching output is still absent, preserving successful renderer outputs.
+    if ! compgen -G 'tree_visualization/*.core_snp_tree.cleaned.nwk' >/dev/null; then
+      cp tree_visualization/input.treefile \
+        tree_visualization/postcondition.core_snp_tree.cleaned.nwk
+    fi
+
+    if ! compgen -G 'tree_visualization/*.core_snp_tree.png' >/dev/null; then
+      python3 - <<'PY_POSTCONDITION_PNG'
+from pathlib import Path
+import struct, zlib
+
+def chunk(tag, payload):
+    return (struct.pack(">I", len(payload)) + tag + payload +
+            struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF))
+
+W, H = 400, 240
+rows = []
+for y in range(H):
+    row = bytearray([0])
+    for x in range(W):
+        dark = x < 5 or x >= W - 5 or y < 5 or y >= H - 5 or (95 <= y < 103)
+        row.extend((0, 0, 0) if dark else (255, 255, 255))
+    rows.append(bytes(row))
+raw = b"".join(rows)
+png = b"\x89PNG\r\n\x1a\n"
+png += chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
+png += chunk(b"IDAT", zlib.compress(raw, 9))
+png += chunk(b"IEND", b"")
+Path("tree_visualization/postcondition.core_snp_tree.png").write_bytes(png)
+PY_POSTCONDITION_PNG
+    fi
+
+    if ! compgen -G 'tree_visualization/*.tree_render.log' >/dev/null; then
+      printf '%s\n' \
+        'Tree rendering completed through a postcondition fallback.' \
+        > tree_visualization/postcondition.tree_render.log
+    fi
+
+    # Final reviewer-critical postconditions. The visualization branch must never
+    # block MERGE_MYC_REPORTS: recreate any unexpectedly missing artifact and exit 0.
+    FINAL_NWK=$(find tree_visualization -maxdepth 1 -name '*.core_snp_tree.cleaned.nwk' -print -quit)
+    if [ -z "${FINAL_NWK}" ] || [ ! -s "${FINAL_NWK}" ]; then
+      printf '%s\n' '(Tree_rendering_unavailable_A:0.0,Tree_rendering_unavailable_B:0.0);'         > tree_visualization/final_guard.core_snp_tree.cleaned.nwk
+    fi
+
+    FINAL_IMG=$(find tree_visualization -maxdepth 1 -name '*.core_snp_tree.png' -print -quit)
+    if [ -z "${FINAL_IMG}" ] || [ ! -s "${FINAL_IMG}" ]; then
+      python3 - <<'PY_FINAL_GUARD_PNG'
+from pathlib import Path
+import struct, zlib
+
+def chunk(tag, payload):
+    return (struct.pack(">I", len(payload)) + tag + payload +
+            struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF))
+
+W, H = 400, 240
+rows=[]
+for y in range(H):
+    row=bytearray([0])
+    for x in range(W):
+        dark=(x<5 or x>=W-5 or y<5 or y>=H-5 or (95<=y<103))
+        row.extend((0,0,0) if dark else (255,255,255))
+    rows.append(bytes(row))
+raw=b"".join(rows)
+png=b"\x89PNG\r\n\x1a\n"
+png+=chunk(b"IHDR", struct.pack(">IIBBBBB", W,H,8,2,0,0,0))
+png+=chunk(b"IDAT", zlib.compress(raw,9))
+png+=chunk(b"IEND", b"")
+Path("tree_visualization/final_guard.core_snp_tree.png").write_bytes(png)
+PY_FINAL_GUARD_PNG
+    fi
+
+    FINAL_LOG=$(find tree_visualization -maxdepth 1 -name '*.tree_render.log' -print -quit)
+    if [ -z "${FINAL_LOG}" ] || [ ! -s "${FINAL_LOG}" ]; then
+      printf '%s\n'         'Tree rendering reached the final output guard; fallback artifacts were supplied so HTML generation could continue.'         > tree_visualization/final_guard.tree_render.log
+    fi
+    exit 0
   >>>
 
   output {
@@ -2431,7 +2970,7 @@ for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
                 successful_samples.append(sample)
 
         if len(snippy_dirs) < min_n:
-            summary_rows.append({"species": display, "status": "SKIPPED_TOO_FEW_SUCCESSFUL_SNIPPY_RUNS", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Fewer than the minimum number of samples completed Snippy. Failed: " + ",".join(failed)})
+            summary_rows.append({"species": display, "status": "SKIPPED_TOO_FEW_SUCCESSFUL_SNIPPY_RUNS", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": ploidy_str, "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "Fewer than the minimum number of samples completed Snippy. Failed: " + ",".join(failed)})
             continue
 
         cmd = [snippy_core_bin, "--ref", str(ref_copy.resolve()), "--prefix", "core"] + snippy_dirs
@@ -2439,7 +2978,7 @@ for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
         raw_core = outdir / "core.aln"
         raw_full = outdir / "core.full.aln"
         if rc != 0 or not raw_core.exists() or raw_core.stat().st_size == 0:
-            summary_rows.append({"species": display, "status": "FAILED_SNIPPY_CORE", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "snippy-core failed or did not produce core.aln. Failed Snippy samples: " + ",".join(failed)})
+            summary_rows.append({"species": display, "status": "FAILED_SNIPPY_CORE", "sample_count": str(len(snippy_dirs)), "branch": "snippy_core_rc170_tb_style", "ploidy": ploidy_str, "reference": ref_label, "core_alignment": "NA", "full_consensus_alignment": "NA", "variable_sites": "NA", "notes": "snippy-core failed or did not produce core.aln. Failed Snippy samples: " + ",".join(failed)})
             continue
 
         core_out = outdir / f"{gslug}.core_snps.aln"
@@ -2452,7 +2991,7 @@ for key, info in sorted(groups.items(), key=lambda kv: kv[1]["display"]):
 
         group_labels.append(display)
         alignment_manifest.append(str(core_out))
-        summary_rows.append({"species": display, "status": "PASS", "sample_count": str(nseqs), "branch": "snippy_core_rc170_tb_style", "ploidy": "NA", "reference": ref_label, "core_alignment": str(core_out), "full_consensus_alignment": str(full_out), "variable_sites": str(nsites), "notes": "rc170 used the rMAP-TB-style Snippy -> snippy-core branch. Species grouping was based on Kraken2/Bracken top-species calls; mixed-species trees are intentionally avoided. Recombination is not explicitly filtered."})
+        summary_rows.append({"species": display, "status": "PASS", "sample_count": str(nseqs), "branch": "snippy_core_rc170_tb_style", "ploidy": ploidy_str, "reference": ref_label, "core_alignment": str(core_out), "full_consensus_alignment": str(full_out), "variable_sites": str(nsites), "notes": "Snippy -> snippy-core used a haploid variant-calling model (ploidy=1). This is a caller setting and does not by itself assert the organism's biological ploidy. Species grouping was based on Kraken2/Bracken top-species calls; mixed-species trees are intentionally avoided. Recombination is not explicitly filtered."})
         continue
 
     ploidy = 1 if key in haploid_set else 2
@@ -3278,87 +3817,100 @@ def parse_amr():
     generic_nohit_values={"NA","N/A","","NO HIT","NO MARKER","NO MARKER DETECTED","NO CURATED MARKER DETECTED","CANDIDATE AMR MARKER","SCANNER FAILED"}
 
     def rescue_marker_from_interpretation(gene, mutation, effect, interp):
-        # rc152: MERGE must not throw away a true ChroQueTas marker merely
-        # because the per-sample summary lacks an explicit hit_status column.
-        # Some earlier summaries put the exact marker only in interpretation:
-        # "Curated ChroQueTas/FungAMR marker detected: Cyp51 K143R (FungAMR MUTATION) ..."
         g=(gene or "").strip()
         m=(mutation or "").strip()
         e=(effect or "").strip()
         text=interp or ""
-        mm=re.search(r'detected:\s*([A-Za-z0-9_./-]+)\s+([A-Z*][0-9]+[A-Z*])\s*\(([^)]*)\)', text, flags=re.I)
+        mm=re.search(r'detected:\s*([A-Za-z0-9_./() -]+?)\s+([A-Z*][0-9]+[A-Z*])(?:\s*\(([^)]*)\))?', text, flags=re.I)
         if mm:
             if g.upper() in generic_nohit_values or "NO MARKER" in g.upper() or "CANDIDATE" in g.upper():
-                g=mm.group(1)
+                g=mm.group(1).strip()
             if m.upper() in {"NA","N/A","","SEE RAW TSV"}:
                 m=mm.group(2)
-            if e.upper() in {"NA","N/A",""}:
+            if e.upper() in {"NA","N/A",""} and mm.group(3):
                 e=mm.group(3)
         return g, m, e
 
     for r in read_dict_tsvs("*.fungal_amr_summary.tsv") + read_dict_tsvs("*.fungal_amr.summary.tsv"):
         sample = first(r, ["sample_id","sample"], infer_sample(r.get("_source_file",""), [".fungal_amr_summary.tsv",".fungal_amr.summary.tsv"]))
-        raw_hit_status = first(r, ["hit_status","status"], "")
-        hit_status = raw_hit_status.lower().strip()
+        raw_status = first(r, ["hit_status","finding_status","status"], "").lower().strip()
         gene = first(r, ["gene","amr_gene","resistance_gene","gene_or_status"], "NA")
         mutation = first(r, ["mutation","variant"], "NA")
         interp = first(r, ["interpretation","prediction","message"], "NA")
         evidence = first(r, ["evidence_level","evidence"], "NA")
         effect = first(r, ["effect"], "NA")
-
-        # Rescue exact markers from interpretation when earlier AMR summaries
-        # carried the marker there but left gene_or_status/mutation generic.
         gene, mutation, effect = rescue_marker_from_interpretation(gene, mutation, effect, interp)
 
-        blob = " ".join([hit_status, gene, mutation, effect, evidence, interp]).lower()
-        failed_terms = ["failed", "scanner_failed", "exit_1", "exit_127", "unknown option", "not available", "summary generation failed", "positive_control_failed", "dependency_missing"]
-        nohit_terms = ["no marker", "no hit", "not detected", "none", "no curated marker", "no amr mutations found"]
+        blob = " ".join([raw_status, gene, mutation, effect, evidence, interp]).lower()
+        failed_terms = ["failed", "scanner_failed", "exit_1", "exit_127", "unknown option", "summary generation failed", "positive_control_failed", "dependency_missing"]
+        nohit_terms = ["no marker", "no hit", "not detected", "no curated marker", "no amr mutations found"]
 
         is_positive_control_failure = ("positive_control_failed" in blob or "positive control failed" in blob)
-        is_failure = (is_positive_control_failure or hit_status in {"scanner_failed","failed","error"} or any(t in blob for t in failed_terms))
-
-        curated_evidence = (
+        is_failure = (is_positive_control_failure or raw_status in {"scanner_failed","failed","error"} or any(t in blob for t in failed_terms))
+        is_curated = (
+            "curated_resistance_marker" in evidence.lower() or
             "fungamr curated marker detected" in evidence.lower() or
-            "curated chroquetas/fungamr marker detected" in interp.lower() or
-            "fungamr mutation" in effect.lower()
+            "curated chroquetas/fungamr" in interp.lower() or
+            "curated fungamr mutation" in effect.lower()
         )
+        is_screening = (
+            "nonsynonymous_screening_finding" in evidence.lower() or
+            "additional nonsynonymous substitution" in effect.lower() or
+            "listed for completeness" in interp.lower()
+        )
+        is_screened_gene = (
+            "gene_target_screened_no_nonsynonymous_variant" in evidence.lower() or
+            "gene target screened" in effect.lower()
+        )
+
         exact_gene_mutation = (
             gene.upper() not in generic_nohit_values and
             "NO MARKER" not in gene.upper() and
-            mutation.upper() not in {"NA","N/A","","SEE RAW TSV"}
+            mutation.upper() not in {"NA","N/A","","SEE RAW TSV","NO NONSYNONYMOUS MUTATION REPORTED"}
         )
 
-        is_hit = (not is_failure and (
-            curated_evidence or
-            hit_status in {"hit","detected","positive","reported","marker_reported"} or
-            exact_gene_mutation
+        # Backward compatibility: exact mutation rows from older summaries remain
+        # curated hits unless they are explicitly labelled as screening-only.
+        if exact_gene_mutation and not is_screening and not is_screened_gene and not is_failure:
+            is_curated = True
+
+        is_nohit = (not is_curated and not is_screening and not is_screened_gene and not is_failure and (
+            raw_status in {"no_hit","negative"} or any(t in blob for t in nohit_terms)
         ))
 
-        # Do not let the historical default no_hit/status-less summaries override
-        # a curated marker. Only call no-hit after excluding curated/exact hits.
-        is_nohit = (not is_hit and not is_failure and (
-            hit_status in {"no_hit","negative"} or any(t in blob for t in nohit_terms)
-        ))
+        if is_positive_control_failure:
+            display_status="positive_control_failed"
+        elif is_failure:
+            display_status="scanner_failed"
+        elif is_curated:
+            display_status="curated_hit"
+        elif is_screening:
+            display_status="screening_finding"
+        elif is_screened_gene:
+            display_status="screened_gene"
+        else:
+            display_status="no_hit"
 
-        display_status = "hit" if is_hit else ("positive_control_failed" if is_positive_control_failure else ("scanner_failed" if is_failure else "no_hit"))
+        preserve_details = display_status in {"curated_hit","screening_finding","screened_gene","scanner_failed","positive_control_failed"}
         rows.append({
             "sample_id": sample,
             "species": first(r, ["species"], "NA"),
             "drug_class": first(r, ["drug_class","class"], "NA"),
             "drug": first(r, ["drug","antifungal"], "NA"),
-            "gene": gene if (is_hit or is_failure) else "No curated marker detected",
-            "mutation": mutation if is_hit else "NA",
-            "effect": effect if is_hit else "NA",
+            "gene": gene if preserve_details else "No curated marker detected",
+            "mutation": mutation if display_status in {"curated_hit","screening_finding","screened_gene"} else "NA",
+            "effect": effect if preserve_details else "NA",
             "evidence_level": evidence,
             "interpretation": interp,
             "hit_status": display_status
         })
+
     by_sample={}
     for r in rows:
         by_sample.setdefault(r["sample_id"], []).append(r)
     for s in samples:
         if s not in by_sample:
-            rows.append({"sample_id":s,"species":"NA","drug_class":"NA","drug":"NA","gene":"No hit","mutation":"NA","effect":"NA","evidence_level":"NA","interpretation":"No AMR summary file found.","hit_status":"no_hit"})
+            rows.append({"sample_id":s,"species":"NA","drug_class":"NA","drug":"NA","gene":"No result","mutation":"NA","effect":"NA","evidence_level":"NA","interpretation":"No AMR summary file found.","hit_status":"no_hit"})
     return rows
 
 species_rows=parse_species()
@@ -3373,13 +3925,19 @@ quast_by={r.get("sample_id",""):r for r in quast_rows}
 busco_by={r["sample_id"]:r for r in busco_rows}
 
 def has_amr_hit(r):
-    return r.get("hit_status") == "hit"
+    return r.get("hit_status") in {"hit", "curated_hit"}
 
 amr_by_count=Counter()
+amr_screening_by_count=Counter()
+amr_screened_gene_by_count=Counter()
 amr_fail_by_count=Counter()
 for r in amr_rows:
     if has_amr_hit(r):
         amr_by_count[r["sample_id"]] += 1
+    if r.get("hit_status") == "screening_finding":
+        amr_screening_by_count[r["sample_id"]] += 1
+    if r.get("hit_status") == "screened_gene":
+        amr_screened_gene_by_count[r["sample_id"]] += 1
     if r.get("hit_status") in {"scanner_failed", "positive_control_failed"}:
         amr_fail_by_count[r["sample_id"]] += 1
 
@@ -3395,10 +3953,15 @@ def nohit_badge():
     return badge("No curated genomic AMR marker detected — not susceptible", "muted")
 
 def amr_card_badge(s):
+    parts=[]
     if amr_by_count[s] > 0:
-        return badge(str(amr_by_count[s])+" AMR hit(s)", "warn")
+        parts.append(badge(str(amr_by_count[s])+" curated AMR marker(s)", "amrhit"))
+    if amr_screening_by_count[s] > 0:
+        parts.append(badge(str(amr_screening_by_count[s])+" additional nonsynonymous finding(s)", "warn"))
     if amr_fail_by_count[s] > 0:
-        return badge("AMR validation/scanner warning", "warn")
+        parts.append(badge("AMR validation/scanner warning", "warn"))
+    if parts:
+        return " ".join(parts)
     return nohit_badge()
 
 def bar(value):
@@ -3460,7 +4023,7 @@ n50_vals=[safe_float(r.get("n50")) for r in assembly_rows if safe_float(r.get("n
 median_n50=f"{statistics.median(n50_vals):,.0f}" if n50_vals else "NA"
 total_hits=sum(1 for r in amr_rows if has_amr_hit(r))
 
-summary_cols=["sample_id","species","percent_reads","contigs","n50","gc_percent","amr_hits"]
+summary_cols=["sample_id","species","percent_reads","contigs","n50","gc_percent","curated_amr_markers","additional_nonsynonymous_findings"]
 summary_rows=[]
 for s in samples:
     summary_rows.append({
@@ -3470,7 +4033,8 @@ for s in samples:
         "contigs":assembly_by.get(s,{}).get("contigs","NA"),
         "n50":assembly_by.get(s,{}).get("n50","NA"),
         "gc_percent":quast_by.get(s,{}).get("GC (%)","NA"),
-        "amr_hits":str(amr_by_count[s])
+        "curated_amr_markers":str(amr_by_count[s]),
+        "additional_nonsynonymous_findings":str(amr_screening_by_count[s])
     })
 
 with open("rMAP-Myc-Candida-Candida_summary.tsv","w",newline="") as f:
@@ -3482,7 +4046,16 @@ species_table=table(species_rows, ["sample_id","species","percent_reads","clade_
 assembly_table=table(assembly_rows, ["sample_id","contigs","total_bp","n50","largest_contig"], {"sample_id":"Sample","total_bp":"Total bp","n50":"N50","largest_contig":"Largest contig"})
 quast_table=table(quast_rows, ["sample_id","# contigs","Largest contig","Total length","GC (%)","N50"], {"sample_id":"Sample"})
 busco_table=table(busco_rows, ["sample_id","Complete_BUSCO_%","Single_copy_BUSCO_%","Duplicated_BUSCO_%","Fragmented_BUSCO_%","Missing_BUSCO_%","BUSCO_n","busco_status","busco_details"], {"sample_id":"Sample","BUSCO_n":"Markers","busco_status":"Status","busco_details":"Compleasm note"}, {"Complete_BUSCO_%":lambda v,r: bar(v), "Missing_BUSCO_%":lambda v,r: bar(v), "busco_status":lambda v,r: badge(v, "success" if str(v).upper() in ["PASS","PARSED"] else "warn")})
-amr_table=table(amr_rows, ["sample_id","species","drug_class","drug","gene","mutation","effect","evidence_level","interpretation"], {"sample_id":"Sample","gene":"Gene / status"}, {"gene":lambda v,r: badge("No marker — not susceptible","muted") if r.get("hit_status")=="no_hit" else (badge("Positive control failed","warn") if r.get("hit_status")=="positive_control_failed" else (badge("Scanner failed","muted") if r.get("hit_status")=="scanner_failed" else badge(esc(v),"amrhit")))})
+def amr_gene_badge(value, row):
+    status=row.get("hit_status")
+    if status=="curated_hit": return badge(esc(value), "amrhit")
+    if status=="screening_finding": return badge(esc(value), "warn")
+    if status=="screened_gene": return badge(esc(value), "info")
+    if status=="positive_control_failed": return badge("Positive control failed", "warn")
+    if status=="scanner_failed": return badge("Scanner failed", "muted")
+    return badge("No curated marker — not susceptible", "muted")
+
+amr_table=table(amr_rows, ["sample_id","species","drug_class","drug","gene","mutation","effect","evidence_level","interpretation"], {"sample_id":"Sample","gene":"Gene / status"}, {"gene":amr_gene_badge})
 
 # -------------------------------------------------------------------------
 # rc173 surveillance-report additions:
@@ -3742,7 +4315,7 @@ def build_phylogeny_section():
             "status":"Status",
             "sample_count":"Samples",
             "branch":"Variant-calling branch",
-            "ploidy":"Ploidy model",
+            "ploidy":"Variant-calling ploidy model",
             "variable_sites":"Core variable sites",
             "notes":"Notes"
         }, {
@@ -3839,7 +4412,7 @@ html_doc=f"""<!DOCTYPE html>
 <section class="metrics">
 <div class="metric"><small>Samples analyzed</small><strong>{len(samples)}</strong></div>
 <div class="metric"><small>Top species groups</small><strong>{len(species_counts)}</strong></div>
-<div class="metric"><small>Total AMR hits</small><strong>{total_hits}</strong></div>
+<div class="metric"><small>Curated AMR markers</small><strong>{total_hits}</strong></div>
 <div class="metric"><small>Median N50</small><strong>{esc(median_n50)}</strong></div>
 </section>
 <section class="card two" id="executive"><div><h2>1. Executive summary</h2>
@@ -3852,8 +4425,8 @@ html_doc=f"""<!DOCTYPE html>
 <section class="card" id="species"><h2>5. Candida species typing using Kraken2/Bracken</h2><p>Top species calls are derived from the custom Candida-focused Kraken2/Bracken database bundled in the species-typing Docker image.</p>{species_table}</section>
 <section class="card" id="assembly"><h2>6. MEGAHIT assembly summary</h2>{assembly_table}</section>
 <section class="card"><h2>7. Assembly quality assessment with QUAST</h2><p>QUAST values are parsed from the native per-sample <code>report.tsv</code> format and transposed into one row per sample. This default surveillance mode reports QUAST assembly contiguity metrics such as contig count, total length, N50, largest contig, and GC percentage. It is very fast. BUSCO and Compleasm tasks are available as optional modules, but they are disabled by default in the recommended JSON and are not required for this QUAST-based assembly assessment.</p>{quast_table}</section>
-<section class="card" id="amr"><h2>8. Fungal antifungal-resistance characterization</h2><p>This section reports mutation/gene-level evidence emitted by the configured fungal AMR container. A “No marker detected” result is not a susceptible call. Fluconazole resistance can be caused by ERG11 alterations, TAC1/UPC2/MRR1/PDR1-mediated efflux, aneuploidy/LOH, copy-number changes, species-specific mechanisms, or markers absent from the current AMR database.</p>{amr_table}</section>
-<section class="card" id="phylogeny"><h2>9. Species-aware core-SNP phylogeny</h2><p>When enabled, rMAP-Candida builds phylogenies separately for each species with sufficient samples and a matching reference. Mixed-species phylogenies are intentionally avoided. Outputs include species-group summaries, core-SNP alignments, and IQ-TREE Newick trees.</p>{phylogeny_section if 'phylogeny_section' in globals() else '<p>Phylogeny was not enabled or no eligible species group met the minimum sample/reference requirements.</p>'}</section>
+<section class="card" id="amr"><h2>8. Fungal antifungal-resistance characterization</h2><p>This section retains all reportable nonsynonymous substitutions emitted from the ChroQueTas/FungAMR per-gene screens. Dark-red labels denote curated resistance-associated markers; orange labels denote additional nonsynonymous screening findings that are listed for completeness but are not automatically interpreted as resistance determinants; blue labels denote screened gene targets without a reported nonsynonymous substitution. ERG11 is displayed together with its Cyp51 alias. A “No curated marker detected” result is not a susceptible call. Resistance may also involve regulatory changes, efflux, copy-number change, LOH/aneuploidy, species-specific mechanisms, or markers absent from the installed database.</p>{amr_table}</section>
+<section class="card" id="phylogeny"><h2>9. Species-aware core-SNP phylogeny</h2><p>When enabled, rMAP-Candida builds phylogenies separately for each species with sufficient samples and a matching reference. Mixed-species phylogenies are intentionally avoided. The table reports the variant-calling ploidy model used by each branch. Tree-rendering failures are converted into explicit diagnostic fallbacks so they cannot prevent generation of this integrated HTML report.</p>{phylogeny_section if 'phylogeny_section' in globals() else '<p>Phylogeny was not enabled or no eligible species group met the minimum sample/reference requirements.</p>'}</section>
 <section class="card" id="snpdist"><h2>10. Species-aware pairwise SNP distances and closest-neighbor summary</h2>{snp_distance_section}</section>
 <section class="card" id="provenance"><h2>11. Output navigation and provenance</h2><p>The workflow emits downloadable tabular outputs in addition to this integrated HTML report.</p><div class="downloads"><div class="download-pill">rMAP-Myc-Candida-Candida_summary.tsv</div><div class="download-pill">rMAP_Candida_surveillance_summary.tsv</div><div class="download-pill">rMAP_Candida_pairwise_snp_distances.tsv</div></div><ul><li>Per-sample Kraken2, Bracken, FASTQ QC, assembly, QUAST, AMR, and optional phylogeny files are available in the Cromwell execution outputs.</li><li>Dockerized execution supports reproducibility across local Cromwell and cloud environments.</li></ul></section>
 <div class="footer">rMAP-Myc-Candida | Rapid Mycological Analysis Pipeline for Candida</div>
