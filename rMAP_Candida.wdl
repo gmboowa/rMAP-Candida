@@ -1,8 +1,6 @@
 version 1.0
 
-# rMAP-Candida final reviewer-patched workflow (2026-07)
-#
-# Reviewer-critical corrections consolidated in this file:
+# rMAP-Candida workflow (2026-07)
 #   1. AMR uses a pre-built ChroQueTas/FungAMR container; no runtime conda/mamba installation.
 #   2. All reportable nonsynonymous AMR screening findings are retained, while curated
 #      resistance markers are explicitly distinguished and highlighted in the final HTML.
@@ -1676,7 +1674,7 @@ EOF_CHROQ_SHIM
       MARKER_LINE=$(tail -n +2 "${RAW_OUT}"         | grep -Eiv 'chroquetas.list_species|species_for_chroquetas|scanner.stdout|scanner.stderr|no hit|no marker|none detected|not detected|negative|absence|source_file'         | grep -Ei 'ERG11|ERG1|ERG2|ERG3|ERG4|ERG5|ERG6|TAC1|TAC1B|UPC2|MRR1|PDR1|CDR1|CDR2|SNQ2|MDR1|FKS1|FKS2|HS1|FCY1|FCY2|FUR1|azole|echinocandin|amphotericin|flucytosine|fluconazole|voriconazole|posaconazole|itraconazole|caspofungin|micafungin|anidulafungin|resistan|mutation|variant|hotspot|copy.number|aneuploid|LOH|loss.of.heterozygosity'         | head -n 1)
     fi
 
-    # Final reviewer patch: comprehensive multi-finding AMR parser.
+    # Comprehensive multi-finding AMR parser.
     #
     # ChroQueTas emits one per-protein TSV for each screened antifungal target.
     # Earlier workflow revisions retained only the first curated marker row. This
@@ -2572,7 +2570,7 @@ PY_POSTCONDITION_PNG
         > tree_visualization/postcondition.tree_render.log
     fi
 
-    # Final reviewer-critical postconditions. The visualization branch must never
+    # Postconditions. The visualization branch must never
     # block MERGE_MYC_REPORTS: recreate any unexpectedly missing artifact and exit 0.
     FINAL_NWK=$(find tree_visualization -maxdepth 1 -name '*.core_snp_tree.cleaned.nwk' -print -quit)
     if [ -z "${FINAL_NWK}" ] || [ ! -s "${FINAL_NWK}" ]; then
