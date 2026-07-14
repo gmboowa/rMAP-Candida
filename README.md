@@ -30,7 +30,7 @@ cd rMAP-Candida
 
 ### 2. Prepare the two-sample raw-read test data
 
-The reviewer-facing example starts from paired-end raw FASTQ files and runs the complete workflow, including trimming, quality control, species typing, de novo assembly, assembly assessment, antifungal-resistance screening, phylogenomics where eligible, and final HTML reporting.
+The example starts from paired-end raw FASTQ files and runs the complete workflow, including trimming, quality control, species typing, de novo assembly, assembly assessment, antifungal-resistance screening, phylogenomics where eligible, and final HTML reporting.
 
 The example input JSON expects:
 
@@ -145,7 +145,7 @@ The configuration file:
 
 ### 5. Confirm that the input JSON runs from raw reads
 
-The supplied reviewer input should be:
+The supplied input should be:
 
 ```text
 example/rMAP-Candida.inputs.example.two_samples.json
@@ -604,7 +604,7 @@ Clinically important findings should be interpreted with isolate metadata & phen
 
 ## Why WDL/Cromwell?
 
-WDL/Cromwell was selected because it provides a portable workflow description, explicit typed inputs and outputs, scatter-based parallelism for sample-level tasks, Docker runtime declarations, and execution provenance. The same workflow can be run locally for a two-sample reviewer test, on a workstation or HPC environment for larger batches, or on WDL-compatible cloud platforms.
+WDL/Cromwell was selected because it provides a portable workflow description, explicit typed inputs and outputs, scatter-based parallelism for sample-level tasks, Docker runtime declarations, and execution provenance. The same workflow can be run locally for a two-sample test, on a workstation or HPC environment for larger batches, or on WDL-compatible cloud platforms.
 
 This implementation is designed to reduce installation barriers: users do not need to install each bioinformatics tool manually, because task-level dependencies are containerized and versioned.
 
