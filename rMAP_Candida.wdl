@@ -222,6 +222,7 @@ workflow rMAP_Candida {
         input:
           sample_name = sample_names[s],
           contigs = assembled_contigs[s],
+          docker_image = megahit_docker,
           cpu = 1,
           memory_gb = 2,
           disk_gb = max_disk_gb
@@ -927,6 +928,7 @@ task ASSEMBLY_SUMMARY_FROM_FASTA {
   input {
     String sample_name
     File contigs
+    String docker_image
     Int cpu
     Int memory_gb
     Int disk_gb
@@ -990,6 +992,7 @@ task ASSEMBLY_SUMMARY_FROM_FASTA {
   }
 
   runtime {
+    docker: "~{docker_image}"
     cpu: cpu
     memory: "~{memory_gb} GB"
     disks: "local-disk ~{disk_gb} HDD"
