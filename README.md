@@ -5,8 +5,9 @@
 </p>
 
 <p align="center">
-  <em>rMAP-Candida workflow overview for *Candida* spp. whole-genome sequencing, species typing, assembly assessment, antifungal-resistance marker screening, phylogenomics & surveillance reporting.</em>
+  rMAP-Candida workflow overview for <i>Candida spp.</i> whole-genome sequencing, species typing, assembly assessment, antifungal-resistance marker screening, phylogenomics & surveillance reporting.
 </p>
+
 
 ---
 
